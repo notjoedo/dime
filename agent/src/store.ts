@@ -52,46 +52,70 @@ export class TransactionStore {
     `);
 
     this.db.exec(`
-      CREATE INDEX IF NOT EXISTS idx_message_id
-      ON transactions(source_message_id)
+      CREATE TABLE IF NOT EXISTS processed_messages (
+        message_id TEXT PRIMARY KEY,
+        processed_at TEXT,
+        type TEXT
+      )
     `);
 
     this.db.exec(`
-      CREATE INDEX IF NOT EXISTS idx_sender
+      CREATE INDEX IF NOT EXISTS idx_processed_id
+      ON processed_messages(message_id)
+    `);
+
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_txn_sender
       ON transactions(sender_phone)
     `);
   }
 
-  saveTransaction(transaction: Transaction): boolean {
+  markProcessed(messageId: string, type: string = "chat"): void {
     try {
       const stmt = this.db.prepare(`
-        INSERT INTO transactions (
-          id, source_message_id, sender_phone, received_at, processed_at,
-          merchant_name, merchant_category, merchant_address,
-          transaction_date, subtotal, tax, total, payment_method,
-          items_json, raw_text, confidence_score, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR IGNORE INTO processed_messages (message_id, processed_at, type)
+        VALUES (?, ?, ?)
       `);
+      stmt.run(messageId, new Date().toISOString(), type);
+    } catch (err) {
+      console.error("Failed to mark message as processed:", err);
+    }
+  }
 
-      stmt.run(
-        transaction.id,
-        transaction.sourceMessageId,
-        transaction.senderPhone,
-        transaction.receivedAt.toISOString(),
-        transaction.processedAt.toISOString(),
-        transaction.merchant.name,
-        transaction.merchant.category,
-        transaction.merchant.address,
-        transaction.transaction.date,
-        transaction.transaction.subtotal,
-        transaction.transaction.tax,
-        transaction.transaction.total,
-        transaction.transaction.paymentMethod,
-        JSON.stringify(transaction.items),
-        transaction.rawText,
-        transaction.confidenceScore,
-        transaction.status
-      );
+  saveTransaction(transaction: Transaction): boolean {
+    try {
+      this.db.transaction(() => {
+        const stmt = this.db.prepare(`
+          INSERT INTO transactions (
+            id, source_message_id, sender_phone, received_at, processed_at,
+            merchant_name, merchant_category, merchant_address,
+            transaction_date, subtotal, tax, total, payment_method,
+            items_json, raw_text, confidence_score, status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+
+        stmt.run(
+          transaction.id,
+          transaction.sourceMessageId,
+          transaction.senderPhone,
+          transaction.receivedAt.toISOString(),
+          transaction.processedAt.toISOString(),
+          transaction.merchant.name,
+          transaction.merchant.category,
+          transaction.merchant.address,
+          transaction.transaction.date,
+          transaction.transaction.subtotal,
+          transaction.transaction.tax,
+          transaction.transaction.total,
+          transaction.transaction.paymentMethod,
+          JSON.stringify(transaction.items),
+          transaction.rawText,
+          transaction.confidenceScore,
+          transaction.status
+        );
+
+        this.markProcessed(transaction.sourceMessageId, "receipt");
+      })();
 
       console.log(`Saved transaction ${transaction.id}`);
       return true;
@@ -109,16 +133,16 @@ export class TransactionStore {
 
   isProcessed(messageId: string): boolean {
     const stmt = this.db.prepare(
-      "SELECT 1 FROM transactions WHERE source_message_id = ?"
+      "SELECT 1 FROM processed_messages WHERE message_id = ?"
     );
     const result = stmt.get(messageId);
     return result !== undefined;
   }
 
   getProcessedMessageIds(): Set<string> {
-    const stmt = this.db.prepare("SELECT source_message_id FROM transactions");
-    const rows = stmt.all() as { source_message_id: string }[];
-    return new Set(rows.map((row) => row.source_message_id));
+    const stmt = this.db.prepare("SELECT message_id FROM processed_messages");
+    const rows = stmt.all() as { message_id: string }[];
+    return new Set(rows.map((row) => row.message_id));
   }
 
   getRecentTransactions(limit: number = 10): Transaction[] {
@@ -161,6 +185,22 @@ export class TransactionStore {
       confidenceScore: row.confidence_score,
       status: row.status,
     };
+  }
+
+  private lastSentMessages: Set<string> = new Set();
+
+  markSent(text: string): void {
+    this.lastSentMessages.add(text.trim());
+    // Keep only last 10
+    if (this.lastSentMessages.size > 10) {
+      const first = this.lastSentMessages.values().next().value;
+      if (first) this.lastSentMessages.delete(first);
+    }
+  }
+
+  isBotResponse(text: string | null | undefined): boolean {
+    if (!text) return false;
+    return this.lastSentMessages.has(text.trim());
   }
 
   close(): void {

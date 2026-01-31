@@ -98,6 +98,24 @@ export class MessageServer {
     }
   }
 
+  async sendExternal(phoneNumber: string, message: string): Promise<void> {
+    try {
+      // Normalize phone number if needed
+      let formattedPhone = phoneNumber;
+      if (!formattedPhone.startsWith("+")) {
+        const digits = formattedPhone.replace(/\D/g, "");
+        formattedPhone = digits.length === 10 ? `+1${digits}` : `+${digits}`;
+      }
+
+      console.log(`[SDK] Sending reply to ${formattedPhone}...`);
+      await this.sdk.send(formattedPhone, message);
+      console.log(`[SDK] Reply sent.`);
+    } catch (err) {
+      console.error(`[SDK] Failed to send reply to ${phoneNumber}:`, err);
+      throw err;
+    }
+  }
+
   private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = req.url || "/";
     const method = req.method || "GET";

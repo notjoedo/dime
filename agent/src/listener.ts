@@ -8,11 +8,18 @@ export class MessageListener {
   private monitoredPhone: string;
   private processedIds: Set<string> = new Set();
   private lastCheckTime: Date | null = null;
+  private startTime: Date;
 
   constructor(monitoredPhone?: string) {
     this.monitoredPhone = monitoredPhone || config.MONITORED_PHONE;
     this.sdk = new IMessageSDK();
-    console.log(`MessageListener initialized for phone: ${this.monitoredPhone}`);
+    this.startTime = new Date();
+    console.log(`MessageListener initialized at ${this.startTime.toISOString()}`);
+    if (this.monitoredPhone) {
+      console.log(`Filtering for phone: ${this.monitoredPhone}`);
+    } else {
+      console.log(`Mode: Public (responding to all fresh incoming messages)`);
+    }
   }
 
   private normalizePhone(phone: string): string {
@@ -61,7 +68,6 @@ export class MessageListener {
       // Get recent messages using the SDK - returns MessageQueryResult
       const result = await this.sdk.getMessages({
         limit: 50,
-        hasAttachments: true,
         excludeOwnMessages: true,
       });
 
@@ -71,46 +77,106 @@ export class MessageListener {
           continue;
         }
 
+        // For debugging: log basic info for all recent messages
+        console.log(`[DEBUG] Checking msg ${msgId} from ${msg.sender} at ${msg.date.toISOString()}`);
+
+        // 1. MUST IGNORE historical messages (only process "live" time)
+        if (msg.date < this.startTime) {
+          this.processedIds.add(msgId);
+          console.log(`[DEBUG] Ignoring historical message ${msgId}`);
+          continue;
+        }
+
+        // 2. MUST IGNORE Tapbacks/Reactions (breaks loops and prevents weird replies)
+        const text = msg.text || "";
+        const isReaction =
+          text.startsWith("Liked “") ||
+          text.startsWith("Loved “") ||
+          text.startsWith("Disliked “") ||
+          text.startsWith("Laughed at “") ||
+          text.startsWith("Emphasized “") ||
+          text.startsWith("Questioned “") ||
+          text.startsWith("Removed a Like") ||
+          text.startsWith("Removed a Love");
+
+        if (isReaction) {
+          this.processedIds.add(msgId);
+          continue;
+        }
+
         // Check sender
         const sender = msg.sender || "";
         if (!sender || !this.isFromMonitoredPhone(sender)) {
+          // This should only happen if sender is empty since monitoredPhone is now empty
+          console.log(`[DEBUG] Skipping msg ${msgId}: sender is empty`);
           continue;
         }
 
-        // Check for image attachments
-        if (!msg.attachments || msg.attachments.length === 0) {
+        if (msg.isFromMe) {
+          this.processedIds.add(msgId);
           continue;
         }
 
-        for (const attachment of msg.attachments) {
-          if (!this.isImageAttachment(attachment.filename)) {
-            continue;
+        // Handle text messages (no attachments or in addition to attachments)
+        const hasAttachments = msg.attachments && msg.attachments.length > 0;
+
+        if (!hasAttachments && msg.text) {
+          newMessages.push({
+            messageId: msgId,
+            senderPhone: sender,
+            receivedAt: msg.date,
+            text: msg.text
+          });
+          this.processedIds.add(msgId);
+          console.log(`New text message from ${sender}: ${msg.text.slice(0, 50)}...`);
+          continue;
+        }
+
+        // Handle image attachments
+        if (hasAttachments) {
+          let foundImage = false;
+          for (const attachment of msg.attachments!) {
+            if (!this.isImageAttachment(attachment.filename)) {
+              continue;
+            }
+
+            const imagePath = attachment.path;
+            if (!imagePath || !existsSync(imagePath)) {
+              console.warn(`Image path not found for message ${msgId}`);
+              continue;
+            }
+
+            try {
+              const imageData = readFileSync(imagePath);
+              const mimeType = this.getMimeType(attachment.filename);
+
+              newMessages.push({
+                messageId: msgId,
+                senderPhone: sender,
+                receivedAt: msg.date,
+                imagePath: imagePath,
+                imageData: imageData,
+                mimeType: mimeType,
+                text: msg.text || undefined
+              });
+              foundImage = true;
+              console.log(`New receipt image from ${sender}: ${attachment.filename} (${mimeType})`);
+            } catch (err) {
+              console.error(`Failed to read image ${imagePath}:`, err);
+            }
           }
 
-          const imagePath = attachment.path;
-          if (!imagePath || !existsSync(imagePath)) {
-            console.warn(`Image path not found for message ${msgId}`);
-            continue;
-          }
-
-          try {
-            const imageData = readFileSync(imagePath);
-            const mimeType = this.getMimeType(attachment.filename);
-
-            const receivedMsg: ReceivedMessage = {
+          if (foundImage) {
+            this.processedIds.add(msgId);
+          } else if (msg.text) {
+            // If no image found but has text, treat as text message
+            newMessages.push({
               messageId: msgId,
               senderPhone: sender,
               receivedAt: msg.date,
-              imagePath: imagePath,
-              imageData: imageData,
-              mimeType: mimeType,
-            };
-
-            newMessages.push(receivedMsg);
+              text: msg.text
+            });
             this.processedIds.add(msgId);
-            console.log(`New receipt image from ${sender}: ${attachment.filename} (${mimeType})`);
-          } catch (err) {
-            console.error(`Failed to read image ${imagePath}:`, err);
           }
         }
       }

@@ -43,7 +43,8 @@ export interface ReceivedMessage {
   messageId: string;
   senderPhone: string;
   receivedAt: Date;
-  imagePath: string;
-  imageData: Buffer;
-  mimeType: string;
+  imagePath?: string;
+  imageData?: Buffer;
+  mimeType?: string;
+  text?: string;
 }

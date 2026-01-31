@@ -44,35 +44,99 @@ class PhotonAgent {
       return true;
     }
 
-    // Process receipt image with Gemini
-    const parsedReceipt = await this.processor.processReceipt(
-      message.imageData,
-      false,
-      message.mimeType
-    );
-
-    if (!parsedReceipt) {
-      console.warn(`Failed to parse receipt from message ${message.messageId}`);
-      return false;
-    }
-
-    // Create transaction record
-    const transaction = createTransactionFromReceipt(
-      parsedReceipt,
-      message.messageId,
-      message.senderPhone,
-      message.receivedAt
-    );
-
-    // Save to database
-    const saved = this.store.saveTransaction(transaction);
-    if (saved) {
-      console.log(
-        `Successfully processed receipt: ${transaction.merchant.name} - $${transaction.transaction.total.toFixed(2)}`
+    // 1. Handle Receipt Image
+    if (message.imageData) {
+      // Process receipt image with Gemini
+      const parsedReceipt = await this.processor.processReceipt(
+        message.imageData,
+        false,
+        message.mimeType
       );
-      this.printTransactionSummary(transaction);
+
+      if (!parsedReceipt) {
+        console.warn(`Failed to parse receipt from message ${message.messageId}`);
+        return false;
+      }
+
+      // Create transaction record
+      const transaction = createTransactionFromReceipt(
+        parsedReceipt,
+        message.messageId,
+        message.senderPhone,
+        message.receivedAt
+      );
+
+      // Save to database
+      const saved = this.store.saveTransaction(transaction);
+      if (saved) {
+        console.log(
+          `Successfully processed receipt: ${transaction.merchant.name} - $${transaction.transaction.total.toFixed(2)}`
+        );
+        this.printTransactionSummary(transaction);
+
+        // Send a confirmation back to the user
+        let itemsList = "";
+        if (transaction.items && transaction.items.length > 0) {
+          itemsList = "\n\nItems:\n" + transaction.items
+            .map(item => `- ${item.description}: $${item.price.toFixed(2)}`)
+            .slice(0, 10) // Limit to 10 items
+            .join("\n");
+          if (transaction.items.length > 10) {
+            itemsList += `\n...and ${transaction.items.length - 10} more`;
+          }
+        }
+
+        const confirmationMsg = `✅ Receipt processed!\n\nMerchant: ${transaction.merchant.name}\nTotal: $${transaction.transaction.total.toFixed(2)}\nCategory: ${transaction.merchant.category || 'Other'}${itemsList}`;
+        await this.server.sendExternal(message.senderPhone, confirmationMsg);
+        this.store.markSent(confirmationMsg);
+      }
+      return saved;
     }
-    return saved;
+
+    // 2. Handle Text Chat Query
+    if (message.text) {
+      // Loop protection: ignore our own messages if they weren't caught by isFromMe
+      if (this.store.isBotResponse(message.text)) {
+        console.log(`[LOOP PROTECTION] Ignoring message that matches a recent bot response`);
+        this.store.markProcessed(message.messageId);
+        return true;
+      }
+
+      console.log(`Handling chat query: "${message.text}"`);
+      try {
+        // Call the backend chat API
+        const response = await fetch(`${config.BACKEND_URL}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: "aman", // Hardcoded for now as per test requirement, or use phone?
+            message: message.text
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Backend error: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        const botResponse = data.response;
+
+        if (botResponse) {
+          // Send response back to user
+          await this.server.sendExternal(message.senderPhone, botResponse);
+          this.store.markSent(botResponse); // Mark as sent to prevent re-processing
+          this.store.markProcessed(message.messageId);
+          return true;
+        }
+      } catch (err) {
+        console.error("Failed to handle chat message:", err);
+        const errorMsg = "I'm sorry, I'm having trouble connecting to the Dime brain right now. Please try again later.";
+        await this.server.sendExternal(message.senderPhone, errorMsg);
+        this.store.markSent(errorMsg);
+      }
+    }
+
+    return false;
   }
 
   private printTransactionSummary(txn: Transaction): void {
@@ -83,9 +147,9 @@ class PhotonAgent {
     const bold = "\x1b[1m";
     const reset = "\x1b[0m";
 
-    console.log("\n" + green + bold + "=" .repeat(60) + reset);
+    console.log("\n" + green + bold + "=".repeat(60) + reset);
     console.log(green + bold + "   NEW RECEIPT PROCESSED SUCCESSFULLY!" + reset);
-    console.log(green + bold + "=" .repeat(60) + reset);
+    console.log(green + bold + "=".repeat(60) + reset);
 
     console.log(cyan + "\n  MERCHANT INFO:" + reset);
     console.log(`    Name:      ${bold}${txn.merchant.name}${reset}`);
@@ -120,7 +184,7 @@ class PhotonAgent {
     console.log(`    Message ID: ${txn.sourceMessageId.slice(0, 20)}...`);
     console.log(`    Sender:     ${txn.senderPhone}`);
 
-    console.log(green + bold + "\n" + "=" .repeat(60) + reset);
+    console.log(green + bold + "\n" + "=".repeat(60) + reset);
 
     // Also output raw JSON for debugging
     console.log(cyan + "\n  RAW JSON DATA:" + reset);
