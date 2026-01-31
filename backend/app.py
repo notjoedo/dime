@@ -130,6 +130,27 @@ def webhook():
             txs = payload.get("transactions", [])
             saved_transactions = txs + saved_transactions
             
+            # Save to Snowflake
+            db = get_snowflake()
+            if db and txs:
+                for tx in txs:
+                    try:
+                        merchant = tx.get("merchant", {})
+                        merchant_id = merchant.get("id", 0)
+                        merchant_name = merchant.get("name", "Unknown")
+                        # Detect payment method from transaction if available
+                        payment_method = tx.get("payment_method", tx.get("card_type", None))
+                        
+                        db.save_transaction_with_payment_update(
+                            tx,
+                            payload.get("user_id", "webhook_user"),
+                            int(merchant_id) if merchant_id else 0,
+                            merchant_name,
+                            payment_method
+                        )
+                    except Exception as e:
+                        print(f"Webhook: Failed to save transaction: {e}")
+            
             if txs:
                 merchant = txs[0].get("merchant", {}).get("name", "New Merchant")
                 amount = txs[0].get("price", {}).get("total", "0.00")
@@ -236,6 +257,71 @@ def get_stored_transactions():
         return jsonify({"transactions": transactions})
     except Exception as e:
         return jsonify({"error": str(e), "transactions": []}), 200
+
+
+# --- Merchant Management ---
+
+@app.route("/api/merchants", methods=["GET", "POST"])
+def manage_merchants():
+    """Get or add connected merchants"""
+    db = get_snowflake()
+    data = request.json if request.method == "POST" else {}
+    user_id = data.get("user_id", request.args.get("user_id", "test_user"))
+    
+    if request.method == "POST":
+        # Add a new merchant
+        merchant_id = data.get("merchant_id")
+        name = data.get("name", "")
+        logo_url = data.get("logo_url", "")
+        
+        if not merchant_id:
+            return jsonify({"error": "merchant_id is required"}), 400
+        
+        if db:
+            try:
+                result = db.save_merchant(int(merchant_id), user_id, name, logo_url)
+                return jsonify(result)
+            except Exception as e:
+                return jsonify({"error": str(e)}), 500
+        return jsonify({"success": True, "merchant_id": merchant_id, "note": "Snowflake not configured"})
+    
+    # GET - list merchants
+    if db:
+        try:
+            merchants = db.get_merchants(user_id)
+            return jsonify({"merchants": merchants})
+        except Exception as e:
+            return jsonify({"error": str(e), "merchants": []}), 200
+    return jsonify({"merchants": [], "note": "Snowflake not configured"})
+
+
+@app.route("/api/merchants/<int:merchant_id>", methods=["PUT", "DELETE"])
+def update_merchant(merchant_id):
+    """Update or delete a merchant"""
+    db = get_snowflake()
+    if not db:
+        return jsonify({"error": "Snowflake not configured"}), 500
+    
+    data = request.json if request.method == "PUT" else {}
+    user_id = data.get("user_id", request.args.get("user_id", "test_user"))
+    
+    if request.method == "PUT":
+        # Update payment method
+        payment_method = data.get("top_of_file_payment", data.get("payment_method"))
+        if payment_method:
+            try:
+                result = db.update_merchant_payment(merchant_id, user_id, payment_method)
+                return jsonify(result)
+            except Exception as e:
+                return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "payment_method is required"}), 400
+    
+    # DELETE
+    try:
+        result = db.delete_merchant(merchant_id, user_id)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/optimal-card", methods=["POST"])

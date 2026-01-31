@@ -157,6 +157,19 @@ class SnowflakeDB:
             )
         """)
         
+        # Merchants table - connected merchants with top-of-file payment method
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS MERCHANTS (
+                merchant_id INTEGER PRIMARY KEY,
+                user_id VARCHAR,
+                name VARCHAR,
+                logo_url VARCHAR,
+                top_of_file_payment VARCHAR DEFAULT 'paypal',
+                connected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP(),
+                last_transaction_at TIMESTAMP
+            )
+        """)
+        
         conn.commit()
         return {"success": True, "message": "Database, schema, and tables created"}
     
@@ -465,6 +478,96 @@ class SnowflakeDB:
             "total_spent": total_spent,
             "by_category": categories,
         }
+    
+    # ========== Merchant Operations ==========
+    
+    def save_merchant(self, merchant_id: int, user_id: str, name: str, logo_url: str = "") -> Dict[str, Any]:
+        """Save or update a connected merchant"""
+        conn, cursor = self._get_connection()
+        
+        cursor.execute("""
+            MERGE INTO MERCHANTS AS target
+            USING (SELECT %s AS merchant_id) AS source
+            ON target.merchant_id = source.merchant_id AND target.user_id = %s
+            WHEN MATCHED THEN
+                UPDATE SET name = %s, logo_url = %s
+            WHEN NOT MATCHED THEN
+                INSERT (merchant_id, user_id, name, logo_url, top_of_file_payment)
+                VALUES (%s, %s, %s, %s, 'paypal')
+        """, (merchant_id, user_id, name, logo_url, merchant_id, user_id, name, logo_url))
+        
+        conn.commit()
+        return {"success": True, "merchant_id": merchant_id}
+    
+    def get_merchants(self, user_id: str) -> List[Dict[str, Any]]:
+        """Get all connected merchants for a user"""
+        conn, cursor = self._get_connection()
+        
+        cursor.execute("""
+            SELECT merchant_id, name, logo_url, top_of_file_payment, 
+                   connected_at, last_transaction_at
+            FROM MERCHANTS
+            WHERE user_id = %s
+            ORDER BY last_transaction_at DESC NULLS LAST
+        """, (user_id,))
+        
+        rows = cursor.fetchall()
+        merchants = []
+        for row in rows:
+            merchants.append({
+                "merchant_id": row[0],
+                "name": row[1],
+                "logo_url": row[2],
+                "top_of_file_payment": row[3] or "paypal",
+                "connected_at": str(row[4]) if row[4] else None,
+                "last_transaction_at": str(row[5]) if row[5] else None,
+            })
+        return merchants
+    
+    def update_merchant_payment(self, merchant_id: int, user_id: str, payment_method: str) -> Dict[str, Any]:
+        """Update the top-of-file payment method for a merchant"""
+        conn, cursor = self._get_connection()
+        
+        cursor.execute("""
+            UPDATE MERCHANTS
+            SET top_of_file_payment = %s, last_transaction_at = CURRENT_TIMESTAMP()
+            WHERE merchant_id = %s AND user_id = %s
+        """, (payment_method, merchant_id, user_id))
+        
+        conn.commit()
+        return {"success": True, "merchant_id": merchant_id, "payment_method": payment_method}
+    
+    def save_transaction_with_payment_update(self, tx: Dict[str, Any], user_id: str, merchant_id: int, merchant_name: str, payment_method: str = None) -> Dict[str, Any]:
+        """Save a transaction and update merchant's top-of-file payment if provided"""
+        # First save the transaction
+        result = self.save_transaction(tx, user_id, merchant_id, merchant_name)
+        
+        # Update merchant's last transaction time and payment method if specified
+        if payment_method:
+            self.update_merchant_payment(merchant_id, user_id, payment_method)
+        else:
+            # Just update the last transaction time
+            conn, cursor = self._get_connection()
+            cursor.execute("""
+                UPDATE MERCHANTS
+                SET last_transaction_at = CURRENT_TIMESTAMP()
+                WHERE merchant_id = %s AND user_id = %s
+            """, (merchant_id, user_id))
+            conn.commit()
+        
+        return result
+    
+    def delete_merchant(self, merchant_id: int, user_id: str) -> Dict[str, Any]:
+        """Delete a connected merchant"""
+        conn, cursor = self._get_connection()
+        
+        cursor.execute("""
+            DELETE FROM MERCHANTS
+            WHERE merchant_id = %s AND user_id = %s
+        """, (merchant_id, user_id))
+        
+        conn.commit()
+        return {"success": True, "deleted": cursor.rowcount > 0}
 
 
 # Singleton instance
@@ -476,3 +579,4 @@ def get_db() -> SnowflakeDB:
     if _db_instance is None:
         _db_instance = SnowflakeDB()
     return _db_instance
+
