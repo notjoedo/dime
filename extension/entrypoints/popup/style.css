@@ -11,3 +11,13 @@
 * {
   font-family: "Coolvetica", sans-serif;
 }
+
+/* Hide scrollbar */
+::-webkit-scrollbar {
+  display: none;
+}
+
+html, body {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}

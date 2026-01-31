@@ -97,7 +97,7 @@ export function Card({
           <span className="text-[#BB86FC] text-base font-medium">ideal card!</span>
         </div>
         {/* Backdrop glow */}
-        <div className="absolute inset-0 rounded-2xl bg-[#BB86FC] opacity-30 blur-xl pointer-events-none" />
+        <div className="absolute bg-[#BB86FC] opacity-40 blur-lg left-0 right-4 top-1/2 -bottom-3 rounded-2xl pointer-events-none" />
         {/* Card */}
         <div className="relative w-full">
           {cardContent}
