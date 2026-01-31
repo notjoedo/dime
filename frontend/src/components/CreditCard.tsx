@@ -17,6 +17,7 @@ const CARD_TYPES = {
     mastercard: { label: "Mastercard", color: "linear-gradient(135deg, #ff6f00 0%, #ffca28 100%)" },
     amex: { label: "American Express", color: "linear-gradient(135deg, #00acc1 0%, #006064 100%)" },
     discover: { label: "Discover", color: "linear-gradient(135deg, #f57c00 0%, #e65100 100%)" },
+    paypal: { label: "PayPal", color: "linear-gradient(135deg, #003087 0%, #009cde 100%)" },
     other: { label: "Other", color: "linear-gradient(135deg, #424242 0%, #212121 100%)" }
 };
 

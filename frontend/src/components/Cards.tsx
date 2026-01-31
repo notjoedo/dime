@@ -15,6 +15,7 @@ const CARD_TYPES = [
     { value: "mastercard", label: "Mastercard" },
     { value: "amex", label: "American Express" },
     { value: "discover", label: "Discover" },
+    { value: "paypal", label: "PayPal" },
     { value: "other", label: "Other" }
 ];
 
