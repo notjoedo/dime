@@ -171,7 +171,7 @@ def webhook():
 @app.route("/api/top-of-file", methods=["GET"])
 def get_top_of_file():
     """Get top of file data - placeholder"""
-    pass
+    return jsonify({"data": []})
 
 
 @app.route("/api/cashflow", methods=["GET", "POST"])
@@ -195,7 +195,7 @@ def get_cashflow():
 @app.route("/api/alerts", methods=["GET"])
 def get_alerts():
     """Get alerts - placeholder"""
-    pass
+    return jsonify({"alerts": []})
 
 
 # --- Snowflake Management ---
@@ -473,6 +473,77 @@ def manage_cards():
     }
     
     return jsonify({"message": "Card added successfully", "card": response_card}), 201
+
+import traceback
+
+@app.route("/api/chat", methods=["POST"])
+def chat():
+    """Chat with financial data using Snowflake Cortex"""
+    data = request.json
+    user_id = data.get("user_id", "test_user")
+    message = data.get("message")
+    
+    if not message:
+        return jsonify({"error": "message is required"}), 400
+        
+    db = get_snowflake()
+    if not db:
+        # Fallback if Snowflake is not configured
+        return jsonify({
+            "response": "I'm sorry, I don't have access to your financial records right now. Please make sure your account is connected."
+        })
+        
+    try:
+        # 1. Get transaction history
+        transactions = db.get_transactions(user_id, limit=20)
+        
+        # 2. Get card info
+        cards = db.get_cards(user_id)
+        
+        # 3. Construct prompt
+        context = "You are Dime, a helpful financial assistant. You help users manage their cards and understand their spending.\n\n"
+        context += "Here is the user's financial data:\n\n"
+        
+        context += "RECENT TRANSACTIONS:\n"
+        if transactions:
+            for tx in transactions:
+                date = tx.get('datetime', 'Unknown date')
+                merchant = tx.get('merchant_name', 'Unknown merchant')
+                amount = tx.get('total_amount', 0)
+                cat = tx.get('category', 'Uncategorized')
+                context += f"- {date}: {merchant} - ${amount} ({cat})\n"
+        else:
+            context += "No recent transactions found.\n"
+            
+        context += "\nSAVED CARDS:\n"
+        if cards:
+            for card in cards:
+                card_type = card.get('card_type', 'Unknown')
+                last_four = card.get('last_four', '****')
+                holder = card.get('cardholder', 'Unknown')
+                context += f"- {card_type} card ending in {last_four} (Holder: {holder})\n"
+        else:
+            # Check in-memory cards as well
+            if saved_cards:
+                for card in saved_cards:
+                    c = card.get('card', {})
+                    num = c.get('number', '')[-4:] if c.get('number') else '****'
+                    context += f"- Card ending in {num}\n"
+            else:
+                context += "No cards saved.\n"
+            
+        context += "\nInstructions: Use the data above to answer the user's question accurately. If you don't know the answer based on the data, say so. Keep your response concise and helpful."
+        
+        full_prompt = f"{context}\n\nUser Question: {message}\n\nAssistant Response:"
+        
+        # 4. Call LLM
+        response = db.complete(full_prompt)
+        
+        return jsonify({"response": response})
+    except Exception as e:
+        print(f"Chat error: {e}")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(port=5001, debug=True)

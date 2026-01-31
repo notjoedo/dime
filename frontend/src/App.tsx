@@ -6,6 +6,7 @@ import Cashflow from './components/Cashflow'
 import Alerts from './components/Alerts'
 import Cards from './components/Cards'
 import OptimalCard from './components/OptimalCard'
+import Chatbot from './components/Chatbot'
 
 function App() {
   return (
@@ -30,6 +31,9 @@ function App() {
           <Cashflow />
         </div>
         <Alerts />
+
+        {/* Floating Chatbot */}
+        <Chatbot />
       </div>
     </div>
   )

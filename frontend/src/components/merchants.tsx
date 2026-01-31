@@ -32,7 +32,7 @@ const POPULAR_MERCHANTS = [
 export default function Merchants() {
     const [clientId, setClientId] = useState("");
     const [merchantId, setMerchantId] = useState("");
-    const [userId, setUserId] = useState("test_user");
+    const [userId, setUserId] = useState("aman");
     const [product] = useState("transaction_link");
     const [sessionId, setSessionId] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);

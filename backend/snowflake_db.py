@@ -557,6 +557,22 @@ class SnowflakeDB:
         
         return result
     
+    def complete(self, prompt: str, model: str = "llama3.1-70b") -> str:
+        """Call Snowflake Cortex COMPLETE to generate a response"""
+        conn, cursor = self._get_connection()
+        
+        # Escape single quotes in prompt for SQL
+        escaped_prompt = prompt.replace("'", "''")
+        
+        try:
+            cursor.execute(f"SELECT SNOWFLAKE.CORTEX.COMPLETE(%s, %s)", (model, prompt))
+            result = cursor.fetchone()
+            if result:
+                return result[0]
+            return "No response generated."
+        except Exception as e:
+            raise Exception(f"Cortex COMPLETE failed: {e}")
+
     def delete_merchant(self, merchant_id: int, user_id: str) -> Dict[str, Any]:
         """Delete a connected merchant"""
         conn, cursor = self._get_connection()

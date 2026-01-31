@@ -56,8 +56,8 @@ export default function Transactions() {
     const [autoRefresh, setAutoRefresh] = useState(false);
 
 
-    const [userId, setUserId] = useState("test_user");
-    const [merchantId, setMerchantId] = useState("19"); // DoorDash
+    const [userId, setUserId] = useState("aman");
+    const [merchantId, setMerchantId] = useState("19"); // Default to DoorDash as requested
     const [cursor, setCursor] = useState<string | null>(null);
     const [hasMore, setHasMore] = useState(false);
 
