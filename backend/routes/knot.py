@@ -39,7 +39,7 @@ def get_config():
 def create_session():
     """Create a Knot session for the frontend SDK"""
     data = request.json
-    user_id = data.get("user_id", "test_user")
+    user_id = data.get("user_id", "aman")
     product = data.get("product", "transaction_link")
     
     url = "https://production.knotapi.com/session/create"
@@ -69,7 +69,7 @@ def create_session():
 def sync_transactions():
     """Sync transactions from Knot API for a user and merchant"""
     data = request.json
-    user_id = data.get("user_id")
+    user_id = data.get("user_id") or "aman"
     merchant_id = data.get("merchant_id")
     cursor = data.get("cursor")
     

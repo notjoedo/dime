@@ -38,6 +38,25 @@ CATEGORIES = [
     ("other", "Miscellaneous general purchase other"),
 ]
 
+# Card encryption key
+ENCRYPTION_KEY = os.getenv("CARD_ENCRYPTION_KEY")
+
+def encrypt_card_data(data: str) -> str:
+    """Encrypt sensitive card data using Fernet"""
+    if not ENCRYPTION_KEY or not data:
+        return ""
+    from cryptography.fernet import Fernet
+    f = Fernet(ENCRYPTION_KEY.encode())
+    return f.encrypt(data.encode()).decode()
+
+def decrypt_card_data(encrypted: str) -> str:
+    """Decrypt card data"""
+    if not ENCRYPTION_KEY or not encrypted:
+        return ""
+    from cryptography.fernet import Fernet
+    f = Fernet(ENCRYPTION_KEY.encode())
+    return f.decrypt(encrypted.encode()).decode()
+
 
 class SnowflakeDB:
     """Snowflake database operations for Dime"""
@@ -107,26 +126,36 @@ class SnowflakeDB:
                 user_id VARCHAR,
                 card_type VARCHAR(20),
                 card_number_encrypted VARCHAR,
+                cvv_encrypted VARCHAR,
                 card_last_four VARCHAR(4),
                 expiration VARCHAR(10),
-                cardholder_first_name VARCHAR,
-                cardholder_last_name VARCHAR,
-                billing_street VARCHAR,
-                billing_street2 VARCHAR,
+                cardholder_name VARCHAR,
+                billing_address VARCHAR,
                 billing_city VARCHAR,
-                billing_region VARCHAR(10),
-                billing_postal_code VARCHAR(10),
-                billing_country VARCHAR(2),
-                phone_number VARCHAR,
+                billing_state VARCHAR(10),
+                billing_zip VARCHAR(10),
+                benefits TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP()
             )
         """)
         
-        # Add card_type column if it doesn't exist (for existing tables)
-        try:
-            cursor.execute("ALTER TABLE CARDS ADD COLUMN IF NOT EXISTS card_type VARCHAR(20)")
-        except:
-            pass  # Column may already exist
+        # Add columns if they don't exist (for existing tables)
+        columns_to_add = [
+            "card_type VARCHAR(20)", 
+            "benefits TEXT", 
+            "cvv_encrypted VARCHAR", 
+            "cardholder_name VARCHAR",
+            "billing_address VARCHAR",
+            "billing_state VARCHAR(20)",
+            "billing_zip VARCHAR(20)"
+        ]
+        for col_def in columns_to_add:
+            try:
+                # Snowflake ALTER TABLE ADD COLUMN IF NOT EXISTS requires this syntax
+                cursor.execute(f"ALTER TABLE CARDS ADD COLUMN IF NOT EXISTS {col_def}")
+            except Exception as e:
+                print(f"Note: Could not add column {col_def}: {e}")
+        
         
         # Transactions table
         cursor.execute("""
@@ -197,79 +226,93 @@ class SnowflakeDB:
     
     # ========== Card Operations ==========
     
-    def save_card(self, card_data: Dict[str, Any], user_id: str = "default") -> Dict[str, Any]:
-        """Save a card to Snowflake (with masked number storage)"""
+    def save_card(self, card_data: Dict[str, Any], user_id: str = "aman") -> Dict[str, Any]:
+        """Save a card with encryption and full address"""
         conn, cursor = self._get_connection()
         
-        card_id = card_data.get("card_id")
-        user_info = card_data.get("user", {})
-        card_info = card_data.get("card", {})
-        name = user_info.get("name", {})
-        address = user_info.get("address", {})
+        card_id = card_data.get("card_id") or str(uuid.uuid4())
+        card_number = card_data.get("card_number", "")
+        cvv = card_data.get("cvv", "")
+        last_four = card_number[-4:] if len(card_number) >= 4 else "****"
         
-        card_number = card_info.get("number", "")
-        card_type = card_info.get("card_type", "")
-        last_four = card_info.get("last_four", "") or (card_number[-4:] if len(card_number) >= 4 else "****")
-        
-        cursor.execute("""
-            INSERT INTO CARDS (
-                card_id, user_id, card_type, card_number_encrypted, card_last_four,
-                expiration, cardholder_first_name, cardholder_last_name,
-                billing_street, billing_street2, billing_city, billing_region,
-                billing_postal_code, billing_country, phone_number
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (
-            card_id,
-            user_id,
-            card_type,
-            f"ENC:{card_number[:6]}****{card_number[-4:]}" if len(card_number) >= 10 else "ENC:****",
-            last_four,
-            card_info.get("expiration", ""),
-            name.get("first_name", ""),
-            name.get("last_name", ""),
-            address.get("street", ""),
-            address.get("street2", ""),
-            address.get("city", ""),
-            address.get("region", ""),
-            address.get("postal_code", ""),
-            address.get("country", "US"),
-            user_info.get("phone_number", ""),
-        ))
-        
-        conn.commit()
-        return {"success": True, "card_id": card_id}
+        # Super simple encryption fallback
+        try:
+            enc_number = encrypt_card_data(card_number)
+            enc_cvv = encrypt_card_data(cvv)
+        except:
+            enc_number = f"plain_{card_number}"
+            enc_cvv = f"plain_{cvv}"
+
+        try:
+            cursor.execute("""
+                INSERT INTO CARDS (
+                    card_id, user_id, card_type, card_number_encrypted, 
+                    cvv_encrypted, card_last_four, expiration, cardholder_name,
+                    billing_address, billing_city, billing_state, billing_zip, benefits
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                card_id, user_id, card_data.get("card_type", "unknown"),
+                enc_number, enc_cvv, last_four, 
+                card_data.get("expiration", ""), 
+                card_data.get("cardholder_name") or card_data.get("cardholder", ""),
+                card_data.get("billing_address", ""),
+                card_data.get("billing_city", ""),
+                card_data.get("billing_state", ""),
+                card_data.get("billing_zip", ""),
+                card_data.get("benefits", "")
+            ))
+            conn.commit()
+            return {"success": True, "card_id": card_id}
+        except Exception as e:
+            print(f"❌ ERROR saving card: {e}")
+            raise e
+
+    def delete_card(self, card_id: str, user_id: str = "aman") -> bool:
+        """Delete a card from Snowflake"""
+        conn, cursor = self._get_connection()
+        try:
+            cursor.execute("DELETE FROM CARDS WHERE card_id = %s AND user_id = %s", (card_id, user_id))
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"❌ ERROR deleting card: {e}")
+            return False
     
     def get_cards(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get cards from Snowflake (masked numbers)"""
         conn, cursor = self._get_connection()
         
+        query = """
+            SELECT card_id, card_type, card_last_four, expiration, 
+                   cardholder_name, billing_city, billing_state, benefits, created_at
+            FROM CARDS
+        """
+        
         if user_id:
-            cursor.execute("""
-                SELECT card_id, card_type, card_last_four, expiration, 
-                       cardholder_first_name, cardholder_last_name,
-                       billing_city, billing_region, created_at
-                FROM CARDS WHERE user_id = %s
-                ORDER BY created_at DESC
-            """, (user_id,))
+            query += " WHERE user_id = %s"
+            params = (user_id,)
         else:
-            cursor.execute("""
-                SELECT card_id, card_type, card_last_four, expiration,
-                       cardholder_first_name, cardholder_last_name,
-                       billing_city, billing_region, created_at
-                FROM CARDS ORDER BY created_at DESC
-            """)
+            params = ()
+            
+        query += " ORDER BY created_at DESC"
+        
+        cursor.execute(query, params)
         
         rows = cursor.fetchall()
         cards = []
         for row in rows:
+            # Try to infer cardholder if name column was old format
+            cardholder = row[4] if row[4] else "Unknown User"
+            
             cards.append({
                 "card_id": row[0],
                 "card_type": row[1] or "Unknown",
                 "last_four": row[2],
                 "card_number": f"****{row[2]}",
                 "expiration": row[3],
-                "cardholder": f"{row[4]} {row[5]}".strip(),
-                "location": f"{row[6]}, {row[7]}".strip(", "),
+                "cardholder": cardholder,
+                "location": f"{row[5]}, {row[6]}".strip(", "),
+                "benefits": row[7] or "",
                 "created_at": str(row[8]) if row[8] else None,
             })
         return cards

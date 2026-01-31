@@ -1,306 +1,328 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
+import { CreditCard } from "./CreditCard";
 
-interface CardData {
+interface Card {
     card_id: string;
     card_type: string;
     last_four: string;
-    card_number: string;
     expiration: string;
     cardholder: string;
-    location?: string;
-    created_at?: string;
+    benefits?: string;
 }
 
 const CARD_TYPES = [
-    { value: "visa", label: "Visa", icon: "💳" },
-    { value: "mastercard", label: "Mastercard", icon: "💳" },
-    { value: "amex", label: "American Express", icon: "💳" },
-    { value: "discover", label: "Discover", icon: "💳" },
-    { value: "other", label: "Other", icon: "💳" },
+    { value: "visa", label: "Visa" },
+    { value: "mastercard", label: "Mastercard" },
+    { value: "amex", label: "American Express" },
+    { value: "discover", label: "Discover" },
+    { value: "other", label: "Other" }
 ];
 
-const CARD_TYPE_COLORS: Record<string, string> = {
-    visa: "#1a1f71",
-    mastercard: "#eb001b",
-    amex: "#006fcf",
-    discover: "#ff6000",
-    other: "#666",
-};
-
 export default function Cards() {
-    const [cards, setCards] = useState<CardData[]>([]);
+    const [cards, setCards] = useState<Card[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [showForm, setShowForm] = useState(false);
 
-    // Form state - simplified
-    const [cardType, setCardType] = useState("visa");
-    const [lastFour, setLastFour] = useState("");
+    // Form State
+    const [cardNumber, setCardNumber] = useState("");
     const [expiration, setExpiration] = useState("");
-    const [firstName, setFirstName] = useState("");
-    const [lastName, setLastName] = useState("");
+    const [cvv, setCvv] = useState("");
+    const [cardholder, setCardholder] = useState("");
+    const [benefits, setBenefits] = useState("");
+    const [cardType, setCardType] = useState("visa");
 
-    const PYTHON_SERVER_URL = "http://localhost:5001";
+    // Address Fields
+    const [billingAddress, setBillingAddress] = useState("");
+    const [billingCity, setBillingCity] = useState("");
+    const [billingState, setBillingState] = useState("");
+    const [billingZip, setBillingZip] = useState("");
 
-    const fetchCards = useCallback(async () => {
-        try {
-            setLoading(true);
-            setError(null);
-            const response = await fetch(`${PYTHON_SERVER_URL}/api/cards`);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const result = await response.json();
-            setCards(result.cards || []);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : "Failed to fetch");
-        } finally {
-            setLoading(false);
-        }
-    }, []);
+    const API_URL = "http://localhost:5001/api";
 
     useEffect(() => {
         fetchCards();
-    }, [fetchCards]);
+    }, []);
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const fetchCards = async () => {
+        try {
+            setLoading(true);
+            const res = await fetch(`${API_URL}/cards?user_id=aman`);
+            const data = await res.json();
+            setCards(data.cards || []);
+            setLoading(false);
+        } catch (err) {
+            console.error("Failed to fetch cards:", err);
+            setLoading(false);
+        }
+    };
+
+    const handleAddCard = async (e: React.FormEvent) => {
         e.preventDefault();
+        setError(null);
 
-        if (lastFour.length !== 4 || !/^\d{4}$/.test(lastFour)) {
-            setError("Last 4 digits must be exactly 4 numbers");
+        if (cardNumber.length < 13) {
+            setError("Please enter a valid card number");
             return;
         }
 
         try {
             setLoading(true);
-            setError(null);
-
-            const response = await fetch(`${PYTHON_SERVER_URL}/api/cards`, {
+            const res = await fetch(`${API_URL}/cards`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    user: {
-                        name: { first_name: firstName, last_name: lastName },
-                        address: {},
-                        phone_number: ""
-                    },
-                    card: {
-                        card_type: cardType,
-                        last_four: lastFour,
-                        number: "",  // Not required anymore
-                        expiration,
-                        cvv: ""
-                    }
+                    user_id: "aman",
+                    card_number: cardNumber,
+                    expiration,
+                    cvv,
+                    cardholder_name: cardholder,
+                    billing_address: billingAddress,
+                    billing_city: billingCity,
+                    billing_state: billingState,
+                    billing_zip: billingZip,
+                    card_type: cardType,
+                    benefits: benefits
                 })
             });
 
-            if (!response.ok) {
-                const data = await response.json();
-                throw new Error(data.error || `HTTP ${response.status}`);
-            }
+            if (!res.ok) throw new Error("Failed to add card");
 
-            // Reset form and refresh
-            setCardType("visa");
-            setLastFour("");
+            // Reset form
+            setCardNumber("");
             setExpiration("");
-            setFirstName("");
-            setLastName("");
-            setShowForm(false);
-            fetchCards();
+            setCvv("");
+            setCardholder("");
+            setBillingAddress("");
+            setBillingCity("");
+            setBillingState("");
+            setBillingZip("");
+            setBenefits("");
+
+            await fetchCards();
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Failed to add card");
-        } finally {
+            setError("Failed to save card. Please try again.");
             setLoading(false);
         }
     };
 
-    const inputStyle = {
-        width: "100%",
-        padding: "10px",
-        fontSize: "14px",
-        border: "1px solid #ddd",
-        borderRadius: "6px",
-        boxSizing: "border-box" as const
-    };
+    const handleDeleteCard = async (card_id: string) => {
+        if (!confirm("Are you sure you want to delete this card?")) return;
 
-    const labelStyle = {
-        display: "block",
-        fontSize: "12px",
-        fontWeight: "600" as const,
-        color: "#666",
-        marginBottom: "6px"
+        try {
+            setLoading(true);
+            const res = await fetch(`${API_URL}/cards/${card_id}?user_id=aman`, {
+                method: "DELETE"
+            });
+            if (!res.ok) throw new Error("Failed to delete");
+            await fetchCards();
+        } catch (err) {
+            setError("Failed to delete card");
+            setLoading(false);
+        }
     };
 
     return (
         <div style={{
             fontFamily: "system-ui, -apple-system, sans-serif",
-            maxWidth: "500px",
-            margin: "20px auto",
-            padding: "20px",
-            backgroundColor: "#fff",
-            borderRadius: "8px",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.1)"
+            maxWidth: "900px",
+            margin: "0 auto",
+            padding: "20px"
         }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-                <h2 style={{ margin: 0, fontSize: "18px", color: "#333" }}>
-                    💳 Cards
-                </h2>
-                <button
-                    onClick={() => setShowForm(!showForm)}
-                    style={{
-                        padding: "8px 16px",
-                        fontSize: "13px",
-                        backgroundColor: showForm ? "#6c757d" : "#007bff",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: "6px",
-                        cursor: "pointer"
-                    }}
-                >
-                    {showForm ? "Cancel" : "+ Add Card"}
-                </button>
-            </div>
+            <h2 style={{ fontSize: "24px", color: "#333", marginBottom: "24px" }}>💳 Wallet Management</h2>
 
-            {error && (
-                <div style={{ padding: "12px", backgroundColor: "#fee", borderRadius: "6px", color: "#c00", fontSize: "13px", marginBottom: "12px" }}>
-                    {error}
-                </div>
-            )}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "32px", alignItems: "start" }}>
 
-            {showForm && (
-                <form onSubmit={handleSubmit} style={{ marginBottom: "16px", padding: "16px", backgroundColor: "#f9f9f9", borderRadius: "8px" }}>
-                    <div style={{ marginBottom: "16px" }}>
-                        <label style={labelStyle}>Card Type</label>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "8px" }}>
-                            {CARD_TYPES.map((type) => (
-                                <button
-                                    key={type.value}
-                                    type="button"
-                                    onClick={() => setCardType(type.value)}
-                                    style={{
-                                        padding: "10px 4px",
-                                        fontSize: "11px",
-                                        fontWeight: cardType === type.value ? "600" : "400",
-                                        backgroundColor: cardType === type.value ? CARD_TYPE_COLORS[type.value] : "#fff",
-                                        color: cardType === type.value ? "#fff" : "#333",
-                                        border: `2px solid ${cardType === type.value ? CARD_TYPE_COLORS[type.value] : "#ddd"}`,
-                                        borderRadius: "6px",
-                                        cursor: "pointer",
-                                        transition: "all 0.2s"
-                                    }}
+                {/* Left: Add Card Form */}
+                <div style={{
+                    backgroundColor: "#fff",
+                    padding: "24px",
+                    borderRadius: "12px",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.08)"
+                }}>
+                    <h3 style={{ fontSize: "18px", marginBottom: "16px", color: "#444" }}>Add New Card</h3>
+                    <form onSubmit={handleAddCard} autoComplete="off" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+
+                        <div style={{ display: "flex", gap: "12px" }}>
+                            <div style={{ flex: 1 }}>
+                                <label style={labelStyle}>Card Type</label>
+                                <select
+                                    value={cardType}
+                                    onChange={(e) => setCardType(e.target.value)}
+                                    style={inputStyle}
+                                    autoComplete="off"
                                 >
-                                    {type.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
-                        <div>
-                            <label style={labelStyle}>Last 4 Digits</label>
-                            <input
-                                style={inputStyle}
-                                value={lastFour}
-                                onChange={(e) => setLastFour(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                                placeholder="1234"
-                                maxLength={4}
-                                required
-                            />
-                        </div>
-                        <div>
-                            <label style={labelStyle}>Expiration</label>
-                            <input
-                                style={inputStyle}
-                                value={expiration}
-                                onChange={(e) => setExpiration(e.target.value)}
-                                placeholder="MM/YY"
-                                required
-                            />
-                        </div>
-                    </div>
-
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
-                        <div>
-                            <label style={labelStyle}>First Name</label>
-                            <input
-                                style={inputStyle}
-                                value={firstName}
-                                onChange={(e) => setFirstName(e.target.value)}
-                                placeholder="John"
-                                required
-                            />
-                        </div>
-                        <div>
-                            <label style={labelStyle}>Last Name</label>
-                            <input
-                                style={inputStyle}
-                                value={lastName}
-                                onChange={(e) => setLastName(e.target.value)}
-                                placeholder="Doe"
-                                required
-                            />
-                        </div>
-                    </div>
-
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        style={{
-                            width: "100%",
-                            padding: "12px",
-                            fontSize: "14px",
-                            fontWeight: "600",
-                            backgroundColor: loading ? "#ccc" : "#28a745",
-                            color: "#fff",
-                            border: "none",
-                            borderRadius: "6px",
-                            cursor: loading ? "not-allowed" : "pointer"
-                        }}
-                    >
-                        {loading ? "Adding..." : "Add Card"}
-                    </button>
-                </form>
-            )}
-
-            {cards.length > 0 ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                    {cards.map((card, index) => (
-                        <div key={card.card_id || index} style={{
-                            padding: "14px",
-                            backgroundColor: "#f8f9fa",
-                            borderRadius: "8px",
-                            borderLeft: `4px solid ${CARD_TYPE_COLORS[card.card_type?.toLowerCase()] || "#666"}`,
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center"
-                        }}>
-                            <div>
-                                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                                    <span style={{
-                                        fontSize: "12px",
-                                        fontWeight: "600",
-                                        color: "#fff",
-                                        backgroundColor: CARD_TYPE_COLORS[card.card_type?.toLowerCase()] || "#666",
-                                        padding: "2px 8px",
-                                        borderRadius: "4px",
-                                        textTransform: "uppercase"
-                                    }}>
-                                        {card.card_type || "Card"}
-                                    </span>
-                                    <span style={{ fontSize: "16px", fontWeight: "600", color: "#333", fontFamily: "monospace" }}>
-                                        •••• {card.last_four}
-                                    </span>
-                                </div>
-                                <div style={{ fontSize: "12px", color: "#666" }}>
-                                    {card.cardholder} • Exp: {card.expiration}
-                                </div>
+                                    {CARD_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                </select>
+                            </div>
+                            <div style={{ flex: 2 }}>
+                                <label style={labelStyle}>Cardholder Name</label>
+                                <input
+                                    type="text"
+                                    value={cardholder}
+                                    onChange={(e) => setCardholder(e.target.value)}
+                                    placeholder="John Doe"
+                                    style={inputStyle}
+                                    required
+                                />
                             </div>
                         </div>
+
+                        <div>
+                            <label style={labelStyle}>Card Number</label>
+                            <input
+                                type="text"
+                                value={cardNumber}
+                                onChange={(e) => setCardNumber(e.target.value.replace(/\D/g, ''))}
+                                placeholder="4242 4242 4242 4242"
+                                style={inputStyle}
+                                maxLength={16}
+                                required
+                                autoComplete="cc-number"
+                            />
+                        </div>
+
+                        <div style={{ display: "flex", gap: "12px" }}>
+                            <div style={{ flex: 1 }}>
+                                <label style={labelStyle}>Expiration (MM/YY)</label>
+                                <input
+                                    type="text"
+                                    value={expiration}
+                                    onChange={(e) => setExpiration(e.target.value)}
+                                    placeholder="MM/YY"
+                                    style={inputStyle}
+                                    maxLength={5}
+                                    required
+                                    autoComplete="cc-exp"
+                                />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <label style={labelStyle}>CVV</label>
+                                <input
+                                    type="password"
+                                    value={cvv}
+                                    onChange={(e) => setCvv(e.target.value)}
+                                    placeholder="123"
+                                    style={inputStyle}
+                                    maxLength={4}
+                                    required
+                                    autoComplete="new-password"
+                                />
+                            </div>
+                        </div>
+
+                        <div style={{ borderTop: "1px solid #eee", marginTop: "8px", paddingTop: "12px" }}>
+                            <label style={labelStyle}>Billing Street Address</label>
+                            <input
+                                type="text"
+                                value={billingAddress}
+                                onChange={(e) => setBillingAddress(e.target.value)}
+                                placeholder="123 Main St"
+                                style={inputStyle}
+                                required
+                            />
+                        </div>
+
+                        <div style={{ display: "flex", gap: "12px" }}>
+                            <div style={{ flex: 2 }}>
+                                <label style={labelStyle}>City</label>
+                                <input
+                                    type="text"
+                                    value={billingCity}
+                                    onChange={(e) => setBillingCity(e.target.value)}
+                                    placeholder="New York"
+                                    style={inputStyle}
+                                    required
+                                />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <label style={labelStyle}>State</label>
+                                <input
+                                    type="text"
+                                    value={billingState}
+                                    onChange={(e) => setBillingState(e.target.value)}
+                                    placeholder="NY"
+                                    style={inputStyle}
+                                    maxLength={2}
+                                    required
+                                />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <label style={labelStyle}>Zip</label>
+                                <input
+                                    type="text"
+                                    value={billingZip}
+                                    onChange={(e) => setBillingZip(e.target.value)}
+                                    placeholder="10001"
+                                    style={inputStyle}
+                                    maxLength={5}
+                                    required
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label style={labelStyle}>Card Benefits</label>
+                            <textarea
+                                value={benefits}
+                                onChange={(e) => setBenefits(e.target.value)}
+                                placeholder="e.g. 3% cashback on dining..."
+                                style={{ ...inputStyle, minHeight: "60px", resize: "vertical" }}
+                            />
+                        </div>
+
+                        {error && <div style={{ color: "red", fontSize: "12px" }}>{error}</div>}
+
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            style={{
+                                marginTop: "8px",
+                                padding: "12px",
+                                backgroundColor: loading ? "#666" : "#000",
+                                color: "#fff",
+                                border: "none",
+                                borderRadius: "8px",
+                                fontWeight: "600",
+                                cursor: loading ? "not-allowed" : "pointer"
+                            }}
+                        >
+                            {loading ? "Processing..." : "Securely Save Card"}
+                        </button>
+                    </form>
+                </div>
+
+                {/* Right: Card List */}
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                    <h3 style={{ fontSize: "18px", color: "#444", marginBottom: "16px" }}>Stored Cards</h3>
+                    {cards.length === 0 && !loading && (
+                        <div style={{ color: "#888", fontStyle: "italic" }}>No cards in wallet.</div>
+                    )}
+
+                    {cards.map(card => (
+                        <CreditCard key={card.card_id} card={card} onDelete={handleDeleteCard} />
                     ))}
                 </div>
-            ) : (
-                <div style={{ padding: "24px", backgroundColor: "#f5f5f5", borderRadius: "8px", textAlign: "center", color: "#888" }}>
-                    No cards saved yet
-                </div>
-            )}
+
+            </div>
         </div>
     );
 }
+
+const labelStyle = {
+    display: "block",
+    fontSize: "12px",
+    fontWeight: "600",
+    color: "#666",
+    marginBottom: "4px"
+} as const;
+
+const inputStyle = {
+    width: "100%",
+    padding: "10px 12px",
+    fontSize: "14px",
+    border: "1px solid #ddd",
+    borderRadius: "6px",
+    boxSizing: "border-box", // Fixes padding issues
+    fontFamily: "inherit"
+} as const;
+
