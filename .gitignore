@@ -26,3 +26,24 @@ Thumbs.db
 .vscode/
 *.swp
 .claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+venv/
+.venv/
+*.egg-info/
+
+# Agent data
+agent/data/
+
+# TypeScript build output
+dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+backend/.env

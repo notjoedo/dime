@@ -1,34 +1,41 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
 import './App.css'
+import Transactions from './components/transactions'
+import Merchants from './components/merchants'
+import TopOfFile from './components/TopOfFile'
+import Cashflow from './components/Cashflow'
+import Alerts from './components/Alerts'
+import Cards from './components/Cards'
+import OptimalCard from './components/OptimalCard'
+import Chatbot from './components/Chatbot'
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+    <div className="min-h-screen bg-gray-50 text-gray-900 p-6">
+      <div className="max-w-4xl mx-auto">
+        <h1 style={{
+          fontSize: "28px",
+          fontWeight: "700",
+          textAlign: "center",
+          marginBottom: "24px",
+          color: "#333"
+        }}>
+          Dime Dashboard
+        </h1>
+
+        <Cards />
+        <OptimalCard />
+        <Merchants />
+        <Transactions />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+          <TopOfFile />
+          <Cashflow />
+        </div>
+        <Alerts />
+
+        {/* Floating Chatbot */}
+        <Chatbot />
       </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
+    </div>
   )
 }
 
