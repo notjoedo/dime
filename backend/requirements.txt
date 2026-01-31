@@ -1,0 +1,15 @@
+# Web framework
+flask>=3.0.0
+flask-cors>=4.0.0
+
+# Environment
+python-dotenv>=1.0.0
+
+# Snowflake
+snowflake-connector-python>=3.10.0
+
+# Encryption (card data)
+cryptography>=42.0.0
+
+# HTTP client (Knot API)
+requests>=2.31.0
