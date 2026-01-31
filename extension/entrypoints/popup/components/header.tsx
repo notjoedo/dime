@@ -1,4 +1,4 @@
-import logoSvg from "../../../assets/LOGO-01.svg";
+import logoSvg from "../../../assets/LOGO-02.svg";
 
 interface HeaderProps {
   cashbackRate?: string;
