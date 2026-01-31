@@ -46,10 +46,7 @@ interface SyncResponse {
     has_more?: boolean;
 }
 
-/**
- * Transactions Component
- * Fetches and displays transactions from the Knot API via Python Flask server
- */
+
 export default function Transactions() {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [merchantInfo, setMerchantInfo] = useState<{ id?: number; name?: string } | null>(null);
@@ -58,13 +55,12 @@ export default function Transactions() {
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
     const [autoRefresh, setAutoRefresh] = useState(false);
 
-    // User inputs for syncing
+
     const [userId, setUserId] = useState("test_user");
-    const [merchantId, setMerchantId] = useState("19"); // DoorDash as default
+    const [merchantId, setMerchantId] = useState("19"); // DoorDash
     const [cursor, setCursor] = useState<string | null>(null);
     const [hasMore, setHasMore] = useState(false);
 
-    // Python server URL (Flask running on port 5001)
     const PYTHON_SERVER_URL = "http://localhost:5001";
 
     const fetchTransactions = useCallback(async (useCursor: boolean = false) => {
