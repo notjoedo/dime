@@ -15,6 +15,7 @@ export const config = {
   DATABASE_PATH: process.env.DATABASE_PATH || "./data/transactions.db",
   LOG_LEVEL: process.env.LOG_LEVEL || "INFO",
   API_PORT: parseInt(process.env.API_PORT || "3456", 10),
+  BACKEND_URL: process.env.BACKEND_URL || "http://localhost:5001",
 
   getDatabasePath(): string {
     const dbPath = this.DATABASE_PATH;
@@ -28,9 +29,6 @@ export const config = {
     const errors: string[] = [];
     if (!this.GEMINI_API_KEY) {
       errors.push("GEMINI_API_KEY is not set");
-    }
-    if (!this.MONITORED_PHONE) {
-      errors.push("MONITORED_PHONE is not set");
     }
     return errors;
   },
