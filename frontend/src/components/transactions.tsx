@@ -53,7 +53,6 @@ export default function Transactions() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-    const [autoRefresh, setAutoRefresh] = useState(false);
 
 
     const [userId, setUserId] = useState("aman");
@@ -113,12 +112,19 @@ export default function Transactions() {
         }
     }, [userId, merchantId, cursor]);
 
-    // Auto-refresh every 30 seconds if enabled
+    // Initial fetch and auto-refresh setup
     useEffect(() => {
-        if (!autoRefresh) return;
-        const interval = setInterval(() => fetchTransactions(false), 30000);
+        // Initial fetch
+        fetchTransactions(false);
+
+        // Auto-refresh every 30 seconds
+        const interval = setInterval(() => {
+            console.log("Auto-syncing transactions...");
+            fetchTransactions(false);
+        }, 30000);
+
         return () => clearInterval(interval);
-    }, [autoRefresh, fetchTransactions]);
+    }, [fetchTransactions]);
 
     const formatCurrency = (price?: { total?: string; currency?: string }) => {
         if (!price?.total) return "$0.00";
@@ -172,6 +178,18 @@ export default function Transactions() {
                 <h1 style={{ fontSize: "24px", margin: 0, color: "#333" }}>
                     📦 Transaction History
                 </h1>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <div style={{
+                        width: "8px",
+                        height: "8px",
+                        borderRadius: "50%",
+                        backgroundColor: loading ? "#ffc107" : "#28a745",
+                        boxShadow: loading ? "0 0 8px #ffc107" : "none"
+                    }}></div>
+                    <span style={{ fontSize: "12px", color: "#666", fontWeight: "500" }}>
+                        {loading ? "Syncing..." : "Live"}
+                    </span>
+                </div>
             </div>
 
             {/* Sync Controls */}
@@ -179,7 +197,7 @@ export default function Transactions() {
                 display: "grid",
                 gridTemplateColumns: "1fr 1fr",
                 gap: "12px",
-                marginBottom: "16px"
+                marginBottom: "20px"
             }}>
                 <div>
                     <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#666", marginBottom: "4px" }}>
@@ -219,33 +237,6 @@ export default function Transactions() {
                         }}
                     />
                 </div>
-            </div>
-
-            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "16px" }}>
-                <button
-                    onClick={() => fetchTransactions(false)}
-                    disabled={loading}
-                    style={{
-                        padding: "10px 20px",
-                        fontSize: "14px",
-                        fontWeight: "600",
-                        color: "#fff",
-                        backgroundColor: loading ? "#999" : "#007bff",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor: loading ? "not-allowed" : "pointer"
-                    }}
-                >
-                    {loading ? "Syncing..." : "Sync Transactions"}
-                </button>
-                <label style={{ fontSize: "12px", color: "#666", display: "flex", alignItems: "center", gap: "4px" }}>
-                    <input
-                        type="checkbox"
-                        checked={autoRefresh}
-                        onChange={(e) => setAutoRefresh(e.target.checked)}
-                    />
-                    Auto-refresh (30s)
-                </label>
             </div>
 
             {merchantInfo && (
