@@ -1,0 +1,24 @@
+{
+  "name": "photon-agent",
+  "version": "1.0.0",
+  "description": "iMessage Receipt Ingestion System using Photon iMessage Kit",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "dev": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^1.0.0",
+    "@photon-ai/imessage-kit": "^1.0.0",
+    "better-sqlite3": "^11.0.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}
