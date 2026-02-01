@@ -36,6 +36,21 @@ def setup():
         return jsonify({"error": str(e)}), 500
 
 
+@snowflake_bp.route("/reset", methods=["POST"])
+def reset():
+    """Reset (DROP and RECREATE) Snowflake tables"""
+    db = get_snowflake()
+    if not db:
+        return jsonify({"error": "Snowflake not configured"}), 500
+    
+    try:
+        db.reset_database()
+        db.populate_category_embeddings()
+        return jsonify({"success": True, "message": "Snowflake database reset complete"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @snowflake_bp.route("/test", methods=["GET"])
 def test():
     """Test Snowflake connection"""
@@ -69,10 +84,12 @@ def get_stored_transactions():
     data = request.json if request.method == "POST" else {}
     user_id = data.get("user_id", request.args.get("user_id", "test_user"))
     merchant_id = data.get("merchant_id", request.args.get("merchant_id"))
+    card_id = data.get("card_id", request.args.get("card_id"))
+    card_type = data.get("card_type", request.args.get("card_type"))
     limit = int(data.get("limit", request.args.get("limit", 50)))
     
     try:
-        transactions = db.get_transactions(user_id, int(merchant_id) if merchant_id else None, limit)
+        transactions = db.get_transactions(user_id, int(merchant_id) if merchant_id else None, limit, card_id=card_id, card_type=card_type)
         return jsonify({"transactions": transactions})
     except Exception as e:
         return jsonify({"error": str(e), "transactions": []}), 200

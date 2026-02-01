@@ -232,6 +232,21 @@ class SnowflakeDB:
         
         conn.commit()
         return {"success": True, "message": "Database, schema, and tables created"}
+
+    def reset_database(self):
+        """DROP and RECREATE all tables"""
+        conn, cursor = self._get_connection()
+        try:
+            # Drop tables individually
+            cursor.execute("DROP TABLE IF EXISTS TRANSACTIONS")
+            cursor.execute("DROP TABLE IF EXISTS CARDS")
+            cursor.execute("DROP TABLE IF EXISTS MERCHANTS")
+            cursor.execute("DROP TABLE IF EXISTS CATEGORY_EMBEDDINGS")
+            conn.commit()
+            return self.setup_tables()
+        except Exception as e:
+            conn.rollback()
+            raise e
     
     def populate_category_embeddings(self):
         """Pre-compute embeddings for categories using Cortex"""
@@ -361,14 +376,19 @@ class SnowflakeDB:
         price = tx.get("price", {})
         total = price.get("total", "0")
         
-        # Extract payment method from Knot transaction (first payment method)
+        # Extract payment method and card_id from Knot transaction
         payment_methods = tx.get("payment_methods", [])
         payment_method = None
+        card_id = tx.get("card_id") or tx.get("account_id") # Try Knot fields
+        
         if payment_methods:
             pm = payment_methods[0]
             # Check type first (PAYPAL, CARD, etc.), then brand (VISA, PAYPAL, etc.)
             pm_type = pm.get("type", "").upper()
             pm_brand = pm.get("brand", "").upper()
+            if not card_id:
+                card_id = pm.get("external_id") # Fallback to payment method external id
+                
             if pm_type == "PAYPAL" or pm_brand == "PAYPAL":
                 payment_method = "PAYPAL"
             else:
@@ -380,10 +400,11 @@ class SnowflakeDB:
             ON target.id = source.id
             WHEN NOT MATCHED THEN
                 INSERT (id, external_id, user_id, merchant_id, merchant_name,
-                        datetime, order_status, total_amount, currency, payment_method, product_text, raw_json)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, PARSE_JSON(%s))
+                        datetime, order_status, total_amount, currency, payment_method, 
+                        card_id, product_text, raw_json)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, PARSE_JSON(%s))
             WHEN MATCHED THEN
-                UPDATE SET payment_method = %s
+                UPDATE SET payment_method = %s, card_id = COALESCE(target.card_id, %s)
         """, (
             tx_id,
             tx_id,
@@ -396,9 +417,11 @@ class SnowflakeDB:
             float(total) if total else 0,
             price.get("currency", "USD"),
             payment_method,
+            card_id,
             product_text,
             json.dumps(tx),
             payment_method,  # For the UPDATE clause
+            card_id         # For the UPDATE clause
         ))
         
         conn.commit()
@@ -415,8 +438,8 @@ class SnowflakeDB:
                 print(f"Error saving transaction {tx.get('id')}: {e}")
         return {"success": True, "saved": saved, "total": len(transactions)}
     
-    def get_transactions(self, user_id: str, merchant_id: Optional[int] = None, limit: int = 50) -> List[Dict[str, Any]]:
-        """Get transactions from Snowflake"""
+    def get_transactions(self, user_id: str, merchant_id: Optional[int] = None, limit: int = 50, card_id: Optional[str] = None, card_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get transactions from Snowflake with fallback card_type filtering"""
         conn, cursor = self._get_connection()
         
         query = """
@@ -432,6 +455,25 @@ class SnowflakeDB:
         if merchant_id:
             query += " AND merchant_id = %s"
             params.append(merchant_id)
+        
+        if (card_id and card_id not in ["null", "undefined", "paypal-static"]) or card_type:
+            # Handle both strict card_id match AND brand fallback for unlinked transactions
+            # This ensures transactions show for Visa/PayPal cards even before explicit linking
+            target_type = card_type.upper() if card_type else "UNKNOWN"
+            
+            if card_id and card_id not in ["null", "undefined", "paypal-static"]:
+                query += " AND (card_id = %s OR (card_id IS NULL AND (UPPER(payment_method) = %s OR UPPER(payment_method) LIKE %s)))"
+                params.append(card_id)
+                params.append(target_type)
+                params.append(f"%{target_type}%")
+            else:
+                # No specific card_id (e.g. PayPal static card), match unlinked transactions by brand
+                query += " AND card_id IS NULL AND (UPPER(payment_method) = %s OR UPPER(payment_method) LIKE %s)"
+                params.append(target_type)
+                params.append(f"%{target_type}%")
+        else:
+            # Fallback for no filters
+            query += " AND card_id IS NULL"
             
         query += " ORDER BY datetime DESC LIMIT %s"
         params.append(limit)

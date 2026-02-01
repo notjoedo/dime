@@ -142,6 +142,59 @@ def sync_transactions():
         return jsonify({"error": str(e), "transactions": []}), 500
 
 
+@knot_bp.route("/sync-all", methods=["POST"])
+def sync_all_merchants():
+    """Sync transactions for all merchants connected to a user"""
+    data = request.json
+    user_id = data.get("user_id", "aman")
+    
+    db = get_snowflake()
+    if not db:
+        return jsonify({"error": "Snowflake not configured"}), 500
+        
+    try:
+        merchants = db.get_merchants(user_id)
+        sync_results = []
+        
+        for merchant in merchants:
+            merchant_id = merchant.get("merchant_id")
+            if not merchant_id:
+                continue
+                
+            # Internal call to sync logic (simplified for batch)
+            # In a real app, this would be a background task
+            url = "https://production.knotapi.com/transactions/sync"
+            payload = {
+                "external_user_id": user_id,
+                "merchant_id": int(merchant_id),
+                "limit": 100
+            }
+            
+            response = requests.post(
+                url,
+                json=payload,
+                auth=(KNOT_CLIENT_ID, KNOT_CLIENT_SECRET),
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if response.ok:
+                data = response.json()
+                txs = data.get("transactions", [])
+                if txs:
+                    db.save_transactions_batch(txs, user_id, int(merchant_id), merchant.get("name", "Unknown"))
+                    sync_results.append({"merchant": merchant.get("name"), "synced": len(txs)})
+            else:
+                sync_results.append({"merchant": merchant.get("name"), "error": response.text})
+                
+        return jsonify({
+            "success": True,
+            "merchants_synced": len(sync_results),
+            "details": sync_results
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @knot_bp.route("/webhook", methods=["GET", "POST"])
 def webhook():
     """Handle Knot webhooks - saves transactions to Snowflake"""

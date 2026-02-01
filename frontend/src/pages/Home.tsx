@@ -1,15 +1,20 @@
 import { useState, useEffect } from 'react'
 import Header from '../components/Header'
-import { MdChevronLeft, MdChevronRight, MdAdd, MdClose } from 'react-icons/md'
+import { MdChevronLeft, MdChevronRight, MdClose } from 'react-icons/md'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 
 // Import SVG icons - Active merchants only
 import UberIcon from '../public/Uber.svg'
 import SpotifyIcon from '../public/Spotify.svg'
-import DoordashIcon from '../public/DoorDash.svg'
+import DoordashIcon from '../public/Doordash.svg'
 import GrubhubIcon from '../public/Grubhub.svg'
 import AmazonIcon from '../public/Amazon.svg'
 import AppleIcon from '../public/Apple.svg'
+import HBOIcon from '../public/unused_merchants/HBO.svg'
+import LyftIcon from '../public/unused_merchants/Lyft.svg'
+import UberEatsIcon from '../public/unused_merchants/UberEats.svg'
+import CoinbaseIcon from '../public/unused_merchants/Coinbase.svg'
+const PrimeIcon = AmazonIcon // Alias for compatibility
 
 // Icon mapping for dynamic transactions - Active merchants only
 const MERCHANT_ICONS: Record<string, string> = {
@@ -19,6 +24,14 @@ const MERCHANT_ICONS: Record<string, string> = {
   'Grubhub': GrubhubIcon,
   'Amazon': AmazonIcon,
   'Apple': AppleIcon,
+  'Whole Foods': AmazonIcon,
+  'Shell Gas': GrubhubIcon,
+  'eBay': AmazonIcon,
+  'Netflix': HBOIcon,
+  'Delta': LyftIcon,
+  'Hotel': LyftIcon,
+  'Coffee': GrubhubIcon,
+  'Coinbase': CoinbaseIcon,
 }
 
 // Types for dynamic data
@@ -81,15 +94,16 @@ const initialCards: CardData[] = [
   },
 ]
 
-const initialRecentTransactions: Transaction[] = [
-  { id: '1', name: 'Spotify', date: '01.31.26', amount: -48.51 },
-  { id: '2', name: 'Spotify', date: '01.31.26', amount: -48.51 },
-]
+const initialRecentTransactions: Transaction[] = []
 
-const initialEarningsTransactions: Transaction[] = [
-  { id: '1', name: 'Spotify', date: '01.31.26', amount: -48.51 },
-  { id: '2', name: 'Spotify', date: '01.31.26', amount: -48.51 },
-]
+const MERCHANTS_MOCK: Record<string, { name: string, icon: string }[]> = {
+  visa: [{ name: 'Amazon', icon: PrimeIcon }, { name: 'Whole Foods', icon: PrimeIcon }],
+  paypal: [{ name: 'DoorDash', icon: DoordashIcon }],
+  discover: [],
+  mastercard: [{ name: 'Spotify', icon: SpotifyIcon }, { name: 'Netflix', icon: HBOIcon }],
+  amex: [{ name: 'Uber Eats', icon: UberEatsIcon }],
+  default: []
+}
 
 const CARD_COLORS: Record<string, string> = {
   visa: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 50%, #6d28d9 100%)',
@@ -115,8 +129,9 @@ export default function Home() {
 
   // Dynamic data state - populated from backend
   const [cards, setCards] = useState<CardData[]>(initialCards)
-  const [recentTransactions] = useState<Transaction[]>(initialRecentTransactions)
-  const [earningsTransactions] = useState<Transaction[]>(initialEarningsTransactions)
+  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>(initialRecentTransactions)
+  const [topMerchants, setTopMerchants] = useState<{ name: string, icon: string }[]>([])
+  const [syncing, setSyncing] = useState(false)
 
   // Fetch cards from API on mount
   useEffect(() => {
@@ -125,19 +140,31 @@ export default function Home() {
         const API_URL = 'http://localhost:5001/api'
         const res = await fetch(`${API_URL}/cards?user_id=aman`)
         const data = await res.json()
-        if (data.cards && data.cards.length > 0) {
-          // Transform API data to match CardData interface
+        const paypalCard: CardData = {
+          card_id: 'paypal-static',
+          card_type: 'paypal',
+          last_four: '',
+          expiration: 'N/A',
+          cardholder: 'PayPal User',
+          balance: 0,
+          status: 'Active',
+          currency: 'USD',
+        }
+
+        if (data.cards) {
           const apiCards: CardData[] = data.cards.map((card: any) => ({
             card_id: card.card_id,
             card_type: card.card_type?.toLowerCase() || 'visa',
             last_four: card.last_four,
             expiration: card.expiration,
-            cardholder: card.cardholder || 'Unknown',
-            balance: 0, // API doesn't return balance, default to 0
+            cardholder: card.nickname || card.cardholder || 'User',
+            balance: 0,
             status: 'Active',
             currency: 'USD',
           }))
-          setCards(apiCards)
+          setCards([...apiCards, paypalCard])
+        } else {
+          setCards([paypalCard])
         }
       } catch (err) {
         console.error('Failed to fetch cards:', err)
@@ -146,6 +173,73 @@ export default function Home() {
     }
     fetchCards()
   }, [])
+
+  // Update Data on Card Switch
+  useEffect(() => {
+    if (cards.length > 0) {
+      const currentCard = cards[currentCardIndex]
+      const type = (currentCard.card_type || 'visa').toLowerCase()
+
+      // Fetch Real Transactions from Snowflake
+      const fetchTransactions = async () => {
+        try {
+          const API_URL = 'http://localhost:5001/api'
+          const res = await fetch(`${API_URL}/snowflake/transactions?user_id=aman&card_id=${currentCard.card_id}&card_type=${type}`)
+          const data = await res.json()
+
+          if (data.transactions && Array.isArray(data.transactions)) {
+            const mapped = data.transactions.map((tx: any) => ({
+              id: tx.id,
+              name: tx.merchant_name || 'Unknown',
+              date: new Date(tx.datetime).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' }),
+              // Ensure spending shows as negative
+              amount: -Math.abs(Number(tx.total_amount))
+            }))
+            setRecentTransactions(mapped)
+          } else {
+            setRecentTransactions([])
+          }
+        } catch (e) {
+          console.error("Failed to fetch recent transactions", e)
+          setRecentTransactions([])
+        }
+      }
+
+      fetchTransactions()
+
+      // Set Merchants (keep logic for now)
+      if (type === 'discover') {
+        setTopMerchants([])
+      } else {
+        setTopMerchants(MERCHANTS_MOCK[type] || MERCHANTS_MOCK.default)
+      }
+    }
+  }, [currentCardIndex, cards])
+
+  const handleSyncAll = async () => {
+    try {
+      setSyncing(true)
+      const API_URL = 'http://localhost:5001/api'
+      const res = await fetch(`${API_URL}/knot/sync-all`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: 'aman' })
+      })
+      const data = await res.json()
+
+      if (data.success) {
+        // Refresh cards and transactions
+        window.location.reload()
+      } else {
+        alert("Sync failed: " + (data.error || "Unknown error"))
+      }
+    } catch (err) {
+      console.error("Sync error:", err)
+      alert("Failed to connect to backend for sync.")
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   // Graph data - can be populated from backend
   const avgUtilization = 69 // percentage (static for now)
@@ -318,7 +412,15 @@ export default function Home() {
   }
 
   const getTransactionIcon = (name: string) => {
-    return MERCHANT_ICONS[name] || SpotifyIcon
+    // Exact match
+    if (MERCHANT_ICONS[name]) return MERCHANT_ICONS[name]
+
+    // Fuzzy match
+    const lowerName = name.toLowerCase()
+    const match = Object.keys(MERCHANT_ICONS).find(key =>
+      lowerName.includes(key.toLowerCase()) || key.toLowerCase().includes(lowerName)
+    )
+    return match ? MERCHANT_ICONS[match] : SpotifyIcon
   }
 
   return (
@@ -552,7 +654,7 @@ export default function Home() {
                   <Tooltip
                     contentStyle={{ backgroundColor: '#252525', border: '1px solid #333', borderRadius: '8px' }}
                     labelStyle={{ color: '#fff' }}
-                    formatter={(value: any) => `$${Number(value || 0).toLocaleString()}`}
+                    formatter={(value: any) => [`$${(Number(value) || 0).toLocaleString()}`, '']}
                   />
                   <Legend wrapperStyle={{ fontSize: '12px' }} />
                   <Line
@@ -625,7 +727,7 @@ export default function Home() {
           <div style={{ width: '400px', flexShrink: 0, borderTop: '1px solid #333', paddingTop: '20px', paddingRight: '40px' }}>
             {/* Cards Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h2 style={{ fontSize: '24px', color: 'white', opacity: 0.6, margin: 0 }}>cards</h2>
+              <h2 style={{ fontSize: '24px', color: 'white', opacity: 0.6, margin: 0 }}>payment methods</h2>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button
                   onClick={prevCard}
@@ -684,6 +786,7 @@ export default function Home() {
                       transform: `translateY(${offset * 16}px) scale(${1 - offset * 0.04})`,
                       transformOrigin: 'top center',
                       transition: 'all 0.3s ease',
+                      width: '100%',
                     }}
                   >
                     <div
@@ -693,27 +796,45 @@ export default function Home() {
                         padding: '24px',
                         color: '#fff',
                         boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+                        height: '220px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-                        <span style={{ fontSize: '28px', fontWeight: '600' }}>${card.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
-                        <span style={{ fontSize: '20px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '2px' }}>
-                          {card.card_type}
-                        </span>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-start', marginBottom: '20px' }}>
+                        {card.card_type === 'paypal' ? (
+                          <svg width="80" height="24" viewBox="0 0 101 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12.237 2.8H4.437a.9.9 0 00-.89.76L.007 26.36a.54.54 0 00.53.62h3.87a.9.9 0 00.89-.76l.98-6.22a.9.9 0 01.89-.76h2.05c4.27 0 6.73-2.07 7.38-6.17.29-1.79.01-3.2-.84-4.19-.93-1.09-2.58-1.67-4.77-1.67zm.76 6.07c-.36 2.37-2.16 2.37-3.9 2.37h-.99l.69-4.39a.54.54 0 01.53-.45h.45c1.17 0 2.27 0 2.84.67.34.39.44 1 .38 1.8z" fill="white" />
+                            <path d="M35.237 8.8h-3.87a.54.54 0 00-.53.45l-.14.88-.22-.32c-.68-.99-2.19-1.32-3.7-1.32-3.46 0-6.42 2.62-7 6.3-.3 1.84.13 3.6 1.17 4.84.96 1.14 2.33 1.61 3.96 1.61 2.8 0 4.36-1.8 4.36-1.8l-.14.88a.54.54 0 00.53.62h3.48a.9.9 0 00.89-.76l1.68-10.63a.54.54 0 00-.53-.62zm-5.38 6.03c-.3 1.79-1.7 2.99-3.48 2.99-.89 0-1.61-.29-2.08-.83-.47-.54-.64-1.31-.5-2.17.28-1.77 1.71-3.01 3.46-3.01.88 0 1.59.29 2.07.84.48.55.67 1.32.53 2.18z" fill="white" />
+                            <path d="M55.337 8.8h-3.9a.9.9 0 00-.74.39l-4.27 6.29-1.81-6.05a.9.9 0 00-.86-.63h-3.83a.54.54 0 00-.51.71l3.42 10.04-3.21 4.53a.54.54 0 00.44.85h3.89a.9.9 0 00.73-.38l10.3-14.88a.54.54 0 00-.44-.85z" fill="white" />
+                            <path d="M67.737 2.8h-7.8a.9.9 0 00-.89.76l-3.54 22.8a.54.54 0 00.53.62h4.08a.63.63 0 00.62-.53l1.01-6.42a.9.9 0 01.89-.76h2.05c4.27 0 6.73-2.07 7.38-6.17.29-1.79.01-3.2-.84-4.19-.93-1.09-2.58-1.67-4.77-1.67zm.76 6.07c-.36 2.37-2.16 2.37-3.9 2.37h-.99l.69-4.39a.54.54 0 01.53-.45h.45c1.17 0 2.27 0 2.84.67.34.39.44 1 .38 1.8z" fill="#009cde" />
+                            <path d="M90.737 8.8h-3.87a.54.54 0 00-.53.45l-.14.88-.22-.32c-.68-.99-2.19-1.32-3.7-1.32-3.46 0-6.42 2.62-7 6.3-.3 1.84.13 3.6 1.17 4.84.96 1.14 2.33 1.61 3.96 1.61 2.8 0 4.36-1.8 4.36-1.8l-.14.88a.54.54 0 00.53.62h3.48a.9.9 0 00.89-.76l1.68-10.63a.54.54 0 00-.53-.62zm-5.38 6.03c-.3 1.79-1.7 2.99-3.48 2.99-.89 0-1.61-.29-2.08-.83-.47-.54-.64-1.31-.5-2.17.28-1.77 1.71-3.01 3.46-3.01.88 0 1.59.29 2.07.84.48.55.67 1.32.53 2.18z" fill="#009cde" />
+                            <path d="M95.337 3.2l-3.59 22.9a.54.54 0 00.53.62h3.42a.9.9 0 00.89-.76l3.54-22.8a.54.54 0 00-.53-.62h-3.73a.54.54 0 00-.53.45z" fill="#009cde" />
+                          </svg>
+                        ) : (
+                          <span style={{ fontSize: '20px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '2px' }}>
+                            {card.card_type}
+                          </span>
+                        )}
                       </div>
-                      <div style={{ fontSize: '20px', letterSpacing: '4px', marginBottom: '24px', fontFamily: 'monospace' }}>
-                        **** **** **** {card.last_four}
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <div>
-                          <div style={{ fontSize: '10px', opacity: 0.7, letterSpacing: '1px' }}>cardholder name</div>
-                          <div style={{ fontSize: '16px', fontWeight: '500', marginTop: '4px' }}>{card.cardholder}</div>
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: '10px', opacity: 0.7, letterSpacing: '1px' }}>expiry date</div>
-                          <div style={{ fontSize: '16px', fontWeight: '500', marginTop: '4px' }}>{card.expiration}</div>
-                        </div>
-                      </div>
+                      {card.card_type !== 'paypal' && (
+                        <>
+                          <div style={{ fontSize: '20px', letterSpacing: '4px', marginBottom: '24px', fontFamily: 'monospace' }}>
+                            **** **** **** {card.last_four}
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <div>
+                              <div style={{ fontSize: '10px', opacity: 0.7, letterSpacing: '1px' }}>cardholder name</div>
+                              <div style={{ fontSize: '16px', fontWeight: '500', marginTop: '4px' }}>{card.cardholder}</div>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ fontSize: '10px', opacity: 0.7, letterSpacing: '1px' }}>expiry date</div>
+                              <div style={{ fontSize: '16px', fontWeight: '500', marginTop: '4px' }}>{card.expiration}</div>
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 )
@@ -738,132 +859,13 @@ export default function Home() {
               ))}
             </div>
 
-            {/* Card Info Section */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <h3 style={{ fontSize: '20px', color: 'white', opacity: 0.6, margin: 0 }}>card info</h3>
-              <button
-                onClick={() => setShowAddCardModal(true)}
-                style={{
-                  width: '28px',
-                  height: '28px',
-                  borderRadius: '8px',
-                  backgroundColor: 'transparent',
-                  border: '1px solid #444',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#888',
-                }}
-              >
-                <MdAdd size={18} />
-              </button>
-            </div>
 
-            {/* Card Info */}
-            <div
-              style={{
-                backgroundColor: '#1E1E1E',
-                borderRadius: '16px',
-                padding: '16px',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #333' }}>
-                <span style={{ color: '#6b7280', fontSize: '16px' }}>status</span>
-                <span style={{ color: '#fff', fontSize: '16px' }}>{currentCard?.status || 'N/A'}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #333' }}>
-                <span style={{ color: '#6b7280', fontSize: '16px' }}>currency</span>
-                <span style={{ color: '#fff', fontSize: '16px' }}>{currentCard?.currency || 'N/A'}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #333' }}>
-                <span style={{ color: '#6b7280', fontSize: '16px' }}>balance</span>
-                <span style={{ color: '#fff', fontSize: '16px' }}>${currentCard?.balance.toLocaleString('en-US', { minimumFractionDigits: 2 }) || '0.00'}</span>
-              </div>
-              <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
-                <button
-                  style={{
-                    flex: 1,
-                    padding: '12px',
-                    backgroundColor: '#8B5CF6',
-                    border: 'none',
-                    borderRadius: '9999px',
-                    color: '#000',
-                    fontSize: '16px',
-                    cursor: 'pointer',
-                    fontWeight: '1000',
-                  }}
-                >
-                  make payment
-                </button>
-                <button
-                  style={{
-                    padding: '12px 24px',
-                    backgroundColor: '#3a3a3a',
-                    border: 'none',
-                    borderRadius: '9999px',
-                    color: '#fff',
-                    fontSize: '16px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  details
-                </button>
-              </div>
-            </div>
 
-            {/* Lorem Ipsum Section */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', marginBottom: '12px' }}>
-              <h3 style={{ fontSize: '20px', color: 'white', opacity: 0.6, margin: 0 }}>lorum ipsum</h3>
-              <button
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#2A2A2A',
-                  border: 'none',
-                  borderRadius: '8px',
-                  color: '#fff',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                }}
-              >
-                learn more
-              </button>
-            </div>
 
-            {/* Info Cards */}
-            <div
-              style={{
-                backgroundColor: '#1E1E1E',
-                borderRadius: '16px',
-                padding: '16px',
-                marginBottom: '12px',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #333' }}>
-                <span style={{ color: '#6b7280', fontSize: '16px' }}>current best category</span>
-                <span style={{ color: '#06b6d4', fontSize: '16px', fontWeight: '500' }}>Dining - 3x</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0' }}>
-                <span style={{ color: '#6b7280', fontSize: '16px' }}>current subscriptions</span>
-                <span style={{ color: '#fff', fontSize: '16px' }}>13 actives</span>
-              </div>
-            </div>
 
-            {/* Recommended Section */}
-            <div
-              style={{
-                backgroundColor: '#1E1E1E',
-                borderRadius: '16px',
-                padding: '16px',
-                borderLeft: '4px solid #06b6d4',
-              }}
-            >
-              <p style={{ color: '#06b6d4', fontSize: '16px', margin: '0 0 8px 0', fontWeight: '500' }}>recommended</p>
-              <p style={{ color: '#fff', fontSize: '14px', margin: 0, lineHeight: '1.5' }}>
-                Based on your spending, consider adding{' '}
-                <span style={{ textDecoration: 'underline' }}>Chase Ink Business</span> for 5x on office supplies.
-              </p>
-            </div>
+
+
+
           </div>
 
           {/* Vertical Divider */}
@@ -873,7 +875,7 @@ export default function Home() {
           <div style={{ flex: 1, borderTop: '1px solid #333', paddingTop: '20px', paddingLeft: '40px' }}>
             {/* Top Merchants */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h2 style={{ fontSize: '24px', color: 'white', opacity: 0.6, margin: 0 }}>top merchants</h2>
+              <h2 style={{ fontSize: '24px', color: 'white', opacity: 0.6, margin: 0 }}>this month's top</h2>
               <button
                 style={{
                   padding: '8px 16px',
@@ -891,41 +893,57 @@ export default function Home() {
 
             {/* Merchant Icons - Active merchants only */}
             <div style={{ display: 'flex', gap: '12px', marginBottom: '32px', flexWrap: 'wrap' }}>
-              {[
-                { name: 'Uber', icon: UberIcon },
-                { name: 'Spotify', icon: SpotifyIcon },
-                { name: 'DoorDash', icon: DoordashIcon },
-                { name: 'Grubhub', icon: GrubhubIcon },
-                { name: 'Amazon', icon: AmazonIcon },
-                { name: 'Apple', icon: AppleIcon },
-              ].map((merchant, i) => (
-                <div
-                  key={i}
-                  style={{
-                    width: '60px',
-                    height: '60px',
-                    borderRadius: '12px',
-                    cursor: 'pointer',
-                    overflow: 'hidden',
-                  }}
-                >
-                  <img
-                    src={merchant.icon}
-                    alt={merchant.name}
+              {topMerchants.length === 0 ? (
+                <p style={{ color: '#6b7280', fontSize: '14px' }}>No top merchants this month</p>
+              ) : (
+                topMerchants.map((merchant, i) => (
+                  <div
+                    key={i}
                     style={{
-                      width: '110%',
-                      height: '110%',
-                      marginLeft: '-5%',
-                      marginTop: '-5%',
+                      width: '60px',
+                      height: '60px',
+                      borderRadius: '12px',
+                      cursor: 'pointer',
+                      overflow: 'hidden',
                     }}
-                  />
-                </div>
-              ))}
+                  >
+                    <img
+                      src={merchant.icon}
+                      alt={merchant.name}
+                      style={{
+                        width: '110%',
+                        height: '110%',
+                        marginLeft: '-5%',
+                        marginTop: '-5%',
+                      }}
+                    />
+                  </div>
+                ))
+              )}
             </div>
 
             {/* Recent Transactions - Dynamic */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h2 style={{ fontSize: '24px', color: 'white', opacity: 0.6, margin: 0 }}>recent transactions</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <h2 style={{ fontSize: '24px', color: 'white', opacity: 0.6, margin: 0 }}>recent transactions</h2>
+                <button
+                  onClick={handleSyncAll}
+                  disabled={syncing}
+                  style={{
+                    padding: '4px 12px',
+                    backgroundColor: syncing ? '#444' : '#8B5CF6',
+                    border: 'none',
+                    borderRadius: '6px',
+                    color: '#fff',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    cursor: syncing ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  {syncing ? 'syncing...' : 'sync now'}
+                </button>
+              </div>
               <button
                 style={{
                   padding: '8px 16px',
@@ -990,106 +1008,11 @@ export default function Home() {
                       </div>
                     </div>
                     <span style={{ color: '#fff', fontSize: '18px', fontWeight: '500' }}>
-                      {tx.amount < 0 ? '-' : '+'}$ {Math.abs(tx.amount).toFixed(2)}
+                      {tx.amount < 0 ? '-' : '+'} {Math.abs(tx.amount).toFixed(2)}
                     </span>
                   </div>
                 ))
               )}
-            </div>
-
-            {/* Earnings and Rewards - Dynamic */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h2 style={{ fontSize: '24px', color: 'white', opacity: 0.6, margin: 0 }}>earnings and rewards</h2>
-            </div>
-
-            <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
-              {/* Left - Transactions List */}
-              <div
-                style={{
-                  flex: 1,
-                  backgroundColor: '#1E1E1E',
-                  borderRadius: '16px',
-                  padding: '16px',
-                }}
-              >
-                {earningsTransactions.length === 0 ? (
-                  <p style={{ color: '#6b7280', textAlign: 'center', padding: '20px 0' }}>No earnings yet</p>
-                ) : (
-                  earningsTransactions.map((tx, i) => (
-                    <div
-                      key={tx.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '16px 0',
-                        borderBottom: i < earningsTransactions.length - 1 ? '1px solid #333' : 'none',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                        <div
-                          style={{
-                            width: '48px',
-                            height: '48px',
-                            borderRadius: '12px',
-                            overflow: 'hidden',
-                            flexShrink: 0,
-                          }}
-                        >
-                          <img
-                            src={getTransactionIcon(tx.name)}
-                            alt={tx.name}
-                            style={{
-                              width: '110%',
-                              height: '110%',
-                              marginLeft: '-5%',
-                              marginTop: '-5%',
-                            }}
-                          />
-                        </div>
-                        <div>
-                          <p style={{ color: '#fff', fontSize: '16px', margin: 0, fontWeight: '500' }}>{tx.name}</p>
-                          <p style={{ color: '#6b7280', fontSize: '14px', margin: '4px 0 0 0' }}>{tx.date}</p>
-                        </div>
-                      </div>
-                      <span style={{ color: '#fff', fontSize: '18px', fontWeight: '500' }}>
-                        {tx.amount < 0 ? '-' : '+'}$ {Math.abs(tx.amount).toFixed(2)}
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {/* Total Earned Ring Chart - Dynamic */}
-              <div
-                style={{
-                  width: '280px',
-                  backgroundColor: '#1E1E1E',
-                  borderRadius: '16px',
-                  padding: '20px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                }}
-              >
-                <p style={{ color: '#6b7280', fontSize: '18px', margin: '0 0 16px 0', alignSelf: 'flex-start' }}>total earned</p>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <svg width="200" height="200" viewBox="0 0 200 200">
-                    <circle cx="100" cy="100" r="80" fill="none" stroke="#2A2A2A" strokeWidth="20" />
-                    <circle
-                      cx="100"
-                      cy="100"
-                      r="80"
-                      fill="none"
-                      stroke="#2DD4BF"
-                      strokeWidth="20"
-                      strokeLinecap="round"
-                      strokeDasharray={`${earnedDashLarge} ${circumferenceLarge}`}
-                      transform="rotate(-90 100 100)"
-                    />
-                  </svg>
-                </div>
-              </div>
             </div>
           </div>
         </div>
