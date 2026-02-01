@@ -8,6 +8,7 @@ from .merchants import merchants_bp
 from .cards import cards_bp
 from .analytics import analytics_bp
 from .chat import chat_bp
+from .nessie import nessie_bp
 
 __all__ = [
     'knot_bp',
@@ -15,5 +16,6 @@ __all__ = [
     'merchants_bp',
     'cards_bp',
     'analytics_bp',
-    'chat_bp'
+    'chat_bp',
+    'nessie_bp'
 ]

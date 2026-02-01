@@ -140,10 +140,11 @@ export default function Home() {
         const API_URL = 'http://localhost:5001/api'
         const res = await fetch(`${API_URL}/cards?user_id=aman`)
         const data = await res.json()
+
         const paypalCard: CardData = {
           card_id: 'paypal-static',
           card_type: 'paypal',
-          last_four: '',
+          last_four: '8812',
           expiration: 'N/A',
           cardholder: 'PayPal User',
           balance: 0,
@@ -162,7 +163,13 @@ export default function Home() {
             status: 'Active',
             currency: 'USD',
           }))
-          setCards([...apiCards, paypalCard])
+
+          // Ensure PayPal is always there, matched with API cards
+          const combined = [...apiCards]
+          if (!combined.find(c => c.card_type === 'paypal')) {
+            combined.push(paypalCard)
+          }
+          setCards(combined)
         } else {
           setCards([paypalCard])
         }
@@ -180,27 +187,67 @@ export default function Home() {
       const currentCard = cards[currentCardIndex]
       const type = (currentCard.card_type || 'visa').toLowerCase()
 
-      // Fetch Real Transactions from Snowflake
+      // Fetch Direct Transactions from Knot & Sync with Snowflake
       const fetchTransactions = async () => {
         try {
           const API_URL = 'http://localhost:5001/api'
-          const res = await fetch(`${API_URL}/snowflake/transactions?user_id=aman&card_id=${currentCard.card_id}&card_type=${type}`)
-          const data = await res.json()
 
-          if (data.transactions && Array.isArray(data.transactions)) {
-            const mapped = data.transactions.map((tx: any) => ({
-              id: tx.id,
-              name: tx.merchant_name || 'Unknown',
-              date: new Date(tx.datetime).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' }),
-              // Ensure spending shows as negative
-              amount: -Math.abs(Number(tx.total_amount))
-            }))
-            setRecentTransactions(mapped)
+          // 1. Trigger or Fetch Direct from Knot (Fastest way to see real data)
+          const knotRes = await fetch(`${API_URL}/knot/transactions?user_id=aman`)
+          const knotData = await knotRes.json()
+
+          // 2. Fetch from Snowflake (For enriched data like points/categories later)
+          const snowRes = await fetch(`${API_URL}/snowflake/transactions?user_id=aman&card_id=${currentCard.card_id}&card_type=${type}`)
+          const snowData = await snowRes.json()
+
+          // Prefer Knot data for immediate real-time accuracy, falling back to Snowflake
+          let rawTransactions = []
+          if (knotData.transactions && knotData.transactions.length > 0) {
+            rawTransactions = knotData.transactions
+          } else if (snowData.transactions && snowData.transactions.length > 0) {
+            rawTransactions = snowData.transactions
+          }
+
+          if (rawTransactions.length > 0) {
+            const mapped = rawTransactions
+              .filter((tx: any) => {
+                // HARDCODED DEMO LOGIC
+                const t = type.toLowerCase()
+                const mId = Number(tx.merchant_id || tx.merchant?.id)
+
+                if (t === 'visa') {
+                  return mId === 44 // Amazon
+                }
+                if (t === 'paypal') {
+                  return mId === 19 // DoorDash
+                }
+                return true
+              })
+              .map((tx: any) => {
+                const name = tx.merchant_name || tx.merchant?.name || 'Unknown'
+                const mId = Number(tx.merchant_id || tx.merchant?.id)
+                let category = tx.category || 'other'
+
+                if (mId === 44 || name.toLowerCase().includes('amazon')) {
+                  category = 'online store'
+                } else if (mId === 19 || name.toLowerCase().includes('doordash')) {
+                  category = 'food delivery app'
+                }
+
+                return {
+                  id: tx.id,
+                  name,
+                  category,
+                  date: new Date(tx.datetime).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' }),
+                  amount: -Math.abs(Number(tx.total_amount || tx.price?.total || 0))
+                }
+              })
+            setRecentTransactions(mapped.slice(0, 10))
           } else {
             setRecentTransactions([])
           }
         } catch (e) {
-          console.error("Failed to fetch recent transactions", e)
+          console.error("Failed to fetch transactions", e)
           setRecentTransactions([])
         }
       }
@@ -338,7 +385,6 @@ export default function Home() {
   const earnedDash = (totalEarned / 100) * circumference
 
   const circumferenceLarge = 2 * Math.PI * 80 // for large chart (r=80)
-  const earnedDashLarge = (totalEarned / 100) * circumferenceLarge
 
   const handleAddCard = async (e: React.FormEvent) => {
     e.preventDefault()

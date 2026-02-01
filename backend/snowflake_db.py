@@ -365,7 +365,7 @@ class SnowflakeDB:
     
     # ========== Transaction Operations ==========
     
-    def save_transaction(self, tx: Dict[str, Any], user_id: str, merchant_id: int, merchant_name: str) -> Dict[str, Any]:
+    def save_transaction(self, tx: Dict[str, Any], user_id: str, merchant_id: int, merchant_name: str, commit: bool = True) -> Dict[str, Any]:
         """Save a transaction to Snowflake"""
         conn, cursor = self._get_connection()
         
@@ -424,18 +424,27 @@ class SnowflakeDB:
             card_id         # For the UPDATE clause
         ))
         
-        conn.commit()
+        if commit:
+            conn.commit()
         return {"success": True, "id": tx_id, "payment_method": payment_method}
     
     def save_transactions_batch(self, transactions: List[Dict], user_id: str, merchant_id: int, merchant_name: str) -> Dict[str, Any]:
-        """Save multiple transactions"""
+        """Save multiple transactions with a single commit"""
         saved = 0
+        conn, _ = self._get_connection()
         for tx in transactions:
             try:
-                self.save_transaction(tx, user_id, merchant_id, merchant_name)
+                self.save_transaction(tx, user_id, merchant_id, merchant_name, commit=False)
                 saved += 1
             except Exception as e:
                 print(f"Error saving transaction {tx.get('id')}: {e}")
+        
+        try:
+            conn.commit()
+        except Exception as e:
+            print(f"Error committing batch: {e}")
+            raise e
+            
         return {"success": True, "saved": saved, "total": len(transactions)}
     
     def get_transactions(self, user_id: str, merchant_id: Optional[int] = None, limit: int = 50, card_id: Optional[str] = None, card_type: Optional[str] = None) -> List[Dict[str, Any]]:

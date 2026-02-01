@@ -138,8 +138,8 @@ export default function Spending() {
 
         return {
           id: tx.id,
-          merchant: tx.merchant_name,
-          merchantId: tx.merchant_id,
+          merchant: tx.merchant_name || tx.merchant?.name || 'Unknown',
+          merchantId: tx.merchant_id || tx.merchant?.id,
           category: tx.spend_category || 'uncategorized',
           paymentMethod: pmDisplay,
           paymentBrand: pmBrand,
@@ -148,10 +148,10 @@ export default function Spending() {
           date,
           time,
           points: tx.points_earned || 0,
-          amount: -Math.abs(tx.total_amount),
+          amount: -Math.abs(Number(tx.total_amount || 0)),
           logo: merchantConfig?.logo || '/src/public/Avg_Daily_Spend_Icon.svg',
           productImage: null,
-          rawData: tx.raw_json
+          rawData: tx.raw_json || tx
         }
       })
 

@@ -65,28 +65,58 @@ def create_session():
         return jsonify({"error": str(e)}), 500
 
 
-@knot_bp.route("/transactions", methods=["POST"])
+@knot_bp.route("/transactions", methods=["GET", "POST"])
 def sync_transactions():
-    """Sync transactions from Knot API for a user and merchant (fetches ALL pages)"""
-    data = request.json
+    """Sync transactions from Knot API (GET or POST)"""
+    data = request.json if request.method == "POST" else request.args
     user_id = data.get("user_id") or "aman"
     merchant_id = data.get("merchant_id")
     
+    db = get_snowflake()
+    merchants = []
+    if db:
+        merchants = db.get_merchants(user_id)
+        
+    # Determine which merchants to sync
+    merchants_to_sync = []
+    if merchant_id:
+        # Match specific merchant from the list
+        matched = [m for m in merchants if str(m.get("merchant_id")) == str(merchant_id)]
+        if matched:
+            merchants_to_sync = matched
+        else:
+            # Fallback if merchant not in our DB yet
+            merchants_to_sync = [{"merchant_id": merchant_id, "name": "Unknown"}]
+    else:
+        # Sync all connected merchants
+        merchants_to_sync = merchants
+
+    if not merchants_to_sync:
+        # Fallback for empty DB (Bootstrapping)
+        # User defined connected merchants: DoorDash (19), Amazon (44)
+        merchants_to_sync = [
+            {"merchant_id": 19, "name": "DoorDash"},
+            {"merchant_id": 44, "name": "Amazon"}
+        ]
+    
     url = "https://production.knotapi.com/transactions/sync"
     all_transactions = []
-    current_cursor = None
-    has_more = True
-    page_count = 0
     
-    try:
-        while has_more and page_count < 20:  # Safety limit of 20 pages (2000 txs)
+    for m_info in merchants_to_sync:
+        m_id = m_info.get("merchant_id")
+        m_name = m_info.get("name")
+        
+        current_cursor = None
+        has_more = True
+        merchant_txs = []
+        
+        try:
+            # Simple sync call for these transactions
             payload = {
                 "external_user_id": user_id,
-                "merchant_id": int(merchant_id),
-                "limit": 100  # Max limit per page
+                "merchant_id": int(m_id),
+                "limit": 50
             }
-            if current_cursor:
-                payload["cursor"] = current_cursor
             
             response = requests.post(
                 url,
@@ -95,51 +125,41 @@ def sync_transactions():
                 headers={"Content-Type": "application/json"}
             )
             
-            if not response.ok:
-                print(f"Knot sync error: {response.text}")
-                break
+            if response.ok:
+                data = response.json()
+                txs = data.get("transactions", [])
                 
-            data = response.json()
-            transactions = data.get("transactions", [])
-            
-            if not transactions:
-                has_more = False
-                break
+                # Enforce flattened info into transaction for frontend
+                for tx in txs:
+                    if not tx.get("merchant_name"):
+                        tx["merchant_name"] = m_name or tx.get("merchant", {}).get("name")
+                    if not tx.get("merchant_id"):
+                        tx["merchant_id"] = m_id or tx.get("merchant", {}).get("id")
+                    if not tx.get("total_amount"):
+                        tx["total_amount"] = tx.get("price", {}).get("total") or tx.get("total")
+                    if not tx.get("payment_method") and tx.get("payment_methods"):
+                        px = tx.get("payment_methods")[0]
+                        tx["payment_method"] = px.get("brand") or px.get("type")
+                        
+                all_transactions.extend(txs)
                 
-            all_transactions.extend(transactions)
-            
-            # Update cursor for next page
-            current_cursor = data.get("next_cursor")
-            has_more = bool(current_cursor)
-            page_count += 1
-            print(f"Synced page {page_count}: {len(transactions)} transactions")
-        
-        # Save all authentic transactions to Snowflake
-        db = get_snowflake()
-        saved_count = 0
-        if db and all_transactions:
-            try:
-                # Use merchant info from last response
-                merchant_info = data.get("merchant", {})
-                result = db.save_transactions_batch(
-                    all_transactions,
-                    user_id,
-                    int(merchant_id),
-                    merchant_info.get("name", "Unknown")
-                )
-                saved_count = result.get("saved", 0)
-            except Exception as e:
-                print(f"Failed to save to Snowflake: {e}")
-        
-        return jsonify({
-            "success": True, 
-            "total_synced": len(all_transactions),
-            "saved_to_db": saved_count,
-            "pages": page_count
-        })
+                # Save to Snowflake in background (simplified)
+                if db and txs:
+                    db.save_transactions_batch(txs, user_id, int(m_id), m_name)
+                    
+        except Exception as e:
+            print(f"Error syncing merchant {m_id}: {e}")
 
-    except Exception as e:
-        return jsonify({"error": str(e), "transactions": []}), 500
+    # Sort all aggregated transactions by date
+    all_transactions.sort(key=lambda x: x.get("datetime", ""), reverse=True)
+    
+    return jsonify({
+        "success": True, 
+        "total": len(all_transactions),
+        "transactions": all_transactions
+    })
+
+
 
 
 @knot_bp.route("/sync-all", methods=["POST"])

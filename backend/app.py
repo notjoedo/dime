@@ -23,7 +23,8 @@ from routes import (
     merchants_bp,
     cards_bp,
     analytics_bp,
-    chat_bp
+    chat_bp,
+    nessie_bp
 )
 
 app.register_blueprint(knot_bp)
@@ -32,6 +33,7 @@ app.register_blueprint(merchants_bp)
 app.register_blueprint(cards_bp)
 app.register_blueprint(analytics_bp)
 app.register_blueprint(chat_bp)
+app.register_blueprint(nessie_bp)
 
 
 @app.route("/")
@@ -54,6 +56,13 @@ def classify_transactions_legacy():
     """Legacy endpoint - redirects to snowflake blueprint"""
     from routes.snowflake_routes import classify
     return classify()
+
+
+@app.route("/api/transactions", methods=["GET", "POST"])
+def unified_transactions():
+    """Unified transactions endpoint that calls Knot sync directly"""
+    from routes.knot import sync_transactions
+    return sync_transactions()
 
 
 @app.route("/api/transactions/stored", methods=["GET", "POST"])
