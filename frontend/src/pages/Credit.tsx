@@ -260,12 +260,11 @@ export default function Credit() {
           </button>
         </div>
 
-        {/* Stats Cards Row */}
-        <div style={{ display: 'flex', gap: '12px', marginBottom: '24px' }}>
+        {/* 1:1 Grid: Avg Utilization and Recommended */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px' }}>
           {/* Avg Utilization Card - Purple */}
           <div
             style={{
-              flex: 1,
               borderRadius: '16px',
               padding: '24px',
               background: 'linear-gradient(160deg, #2d1f4a 0%, #1a1525 30%, #121212 70%)',
@@ -283,116 +282,63 @@ export default function Credit() {
             </p>
           </div>
 
-          {/* Total Credit Limit Card - Teal/Green */}
+          {/* AI Recommended Section */}
           <div
             style={{
-              flex: 1.2,
               borderRadius: '16px',
               padding: '24px',
-              background: 'linear-gradient(160deg, #0d2d2d 0%, #0a1f1f 30%, #121212 70%)',
-              border: '1px solid rgba(45, 212, 191, 0.2)',
-            }}
-          >
-            <p style={{ color: '#9ca3af', fontSize: '16px', margin: 0, marginBottom: '12px' }}>
-              total credit limit
-            </p>
-            <p style={{ color: '#2DD4BF', fontSize: '32px', fontWeight: '600', margin: 0, marginBottom: '8px' }}>
-              {portfolioStats.totalCreditLimit.toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-              })}
-            </p>
-            <p style={{ color: '#9ca3af', fontSize: '14px', margin: 0 }}>
-              {creditCards.length} active cards
-            </p>
-            <p style={{ color: '#9ca3af', fontSize: '14px', margin: 0, marginTop: '2px' }}>
-              {portfolioStats.availablePercent}% available
-            </p>
-          </div>
-
-          {/* Total Balance Card - Purple */}
-          <div
-            style={{
-              flex: 1,
-              borderRadius: '16px',
-              padding: '24px',
-              background: 'linear-gradient(160deg, #2d1f4a 0%, #1a1525 30%, #121212 70%)',
+              background: 'linear-gradient(90deg, rgba(139, 92, 246, 0.15) 0%, rgba(45, 212, 191, 0.1) 50%, rgba(139, 92, 246, 0.15) 100%), #121212',
               border: '1px solid rgba(139, 92, 246, 0.2)',
             }}
           >
-            <p style={{ color: '#9ca3af', fontSize: '16px', margin: 0, marginBottom: '12px' }}>
-              total balance
-            </p>
-            <p style={{ color: '#A78BFA', fontSize: '32px', fontWeight: '600', margin: 0, marginBottom: '8px' }}>
-              -{portfolioStats.totalBalance < 0 ? ' ' : ''}
-              {Math.abs(portfolioStats.totalBalance).toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-              })}
-            </p>
-            <p style={{ color: '#9ca3af', fontSize: '14px', margin: 0 }}>
-              across all cards
-            </p>
-            <p style={{ color: '#9ca3af', fontSize: '14px', margin: 0, marginTop: '2px' }}>
-              {portfolioStats.usedPercent}% used
-            </p>
-          </div>
-        </div>
-
-        {/* AI Recommended Section */}
-        <div
-          style={{
-            borderRadius: '16px',
-            padding: '24px',
-            background: 'linear-gradient(90deg, rgba(139, 92, 246, 0.15) 0%, rgba(45, 212, 191, 0.1) 50%, rgba(139, 92, 246, 0.15) 100%), #121212',
-            border: '1px solid rgba(139, 92, 246, 0.2)',
-          }}
-        >
-          {/* AI Indicator */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
-            <HiSparkles style={{ color: '#8B5CF6', fontSize: '20px' }} />
-            <span style={{ color: '#8B5CF6', fontSize: '20px', fontWeight: '500' }}>
-              recommended
-            </span>
-          </div>
-
-          {/* Recommendations */}
-          {aiRecommendations.map((rec, index) => (
-            <div key={rec.id} style={{ marginBottom: index < aiRecommendations.length - 1 ? '24px' : 0 }}>
-              <p
-                style={{
-                  color: '#fff',
-                  fontSize: '18px',
-                  fontWeight: '600',
-                  margin: 0,
-                  marginBottom: '8px',
-                  lineHeight: '1.5',
-                }}
-              >
-                {rec.cardSuggestion ? (
-                  <>
-                    {rec.text}{' '}
-                    <span style={{ color: '#2DD4BF', textDecoration: 'underline' }}>
-                      {rec.cardSuggestion}
-                    </span>{' '}
-                    {rec.textAfter}
-                  </>
-                ) : (
-                  rec.text
-                )}
-              </p>
-              <p
-                style={{
-                  color: '#4b5563',
-                  fontSize: '13px',
-                  fontWeight: '400',
-                  margin: 0,
-                  lineHeight: '1.4',
-                  wordBreak: 'break-all',
-                }}
-              >
-                {rec.summary}
-              </p>
+            {/* AI Indicator */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
+              <HiSparkles style={{ color: '#8B5CF6', fontSize: '20px' }} />
+              <span style={{ color: '#8B5CF6', fontSize: '20px', fontWeight: '500' }}>
+                recommended
+              </span>
             </div>
-          ))}
+
+            {/* Recommendations */}
+            {aiRecommendations.map((rec, index) => (
+              <div key={rec.id} style={{ marginBottom: index < aiRecommendations.length - 1 ? '24px' : 0 }}>
+                <p
+                  style={{
+                    color: '#fff',
+                    fontSize: '18px',
+                    fontWeight: '600',
+                    margin: 0,
+                    marginBottom: '8px',
+                    lineHeight: '1.5',
+                  }}
+                >
+                  {rec.cardSuggestion ? (
+                    <>
+                      {rec.text}{' '}
+                      <span style={{ color: '#2DD4BF', textDecoration: 'underline' }}>
+                        {rec.cardSuggestion}
+                      </span>{' '}
+                      {rec.textAfter}
+                    </>
+                  ) : (
+                    rec.text
+                  )}
+                </p>
+                <p
+                  style={{
+                    color: '#4b5563',
+                    fontSize: '13px',
+                    fontWeight: '400',
+                    margin: 0,
+                    lineHeight: '1.4',
+                    wordBreak: 'break-all',
+                  }}
+                >
+                  {rec.summary}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Connected Dividers Section */}
@@ -478,20 +424,20 @@ export default function Credit() {
                       </span>
                     </div>
                     <h4 style={{ fontSize: '24px', fontWeight: '600', margin: '0 0 12px 0' }}>{card.cardName}</h4>
-                    <div style={{ display: 'flex', gap: '40px', marginBottom: '8px' }}>
-                      <div>
-                        <p style={{ fontSize: '11px', opacity: 0.7, margin: 0, marginBottom: '2px' }}>available credit</p>
-                        <p style={{ fontSize: '22px', fontWeight: '700', margin: 0 }}>
-                          {card.availableCredit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                        </p>
-                      </div>
-                      {card.cardType !== 'paypal' && (
+                    {card.cardType !== 'paypal' && (
+                      <div style={{ display: 'flex', gap: '40px', marginBottom: '8px' }}>
+                        <div>
+                          <p style={{ fontSize: '11px', opacity: 0.7, margin: 0, marginBottom: '2px' }}>available credit</p>
+                          <p style={{ fontSize: '22px', fontWeight: '700', margin: 0 }}>
+                            {card.availableCredit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </p>
+                        </div>
                         <div>
                           <p style={{ fontSize: '11px', opacity: 0.7, margin: 0, marginBottom: '2px' }}>expiry date</p>
                           <p style={{ fontSize: '22px', fontWeight: '700', margin: 0 }}>{card.expiryDate}</p>
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
                     {card.cardType !== 'paypal' && (
                       <p style={{ fontSize: '16px', letterSpacing: '3px', margin: 0, fontFamily: 'monospace' }}>
                         **** **** **** {card.lastFour}
@@ -575,20 +521,20 @@ export default function Credit() {
                       </span>
                     </div>
                     <h4 style={{ fontSize: '24px', fontWeight: '600', margin: '0 0 12px 0' }}>{card.cardName}</h4>
-                    <div style={{ display: 'flex', gap: '40px', marginBottom: '8px' }}>
-                      <div>
-                        <p style={{ fontSize: '11px', opacity: 0.7, margin: 0, marginBottom: '2px' }}>available credit</p>
-                        <p style={{ fontSize: '22px', fontWeight: '700', margin: 0 }}>
-                          {card.availableCredit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                        </p>
-                      </div>
-                      {card.cardType !== 'paypal' && (
+                    {card.cardType !== 'paypal' && (
+                      <div style={{ display: 'flex', gap: '40px', marginBottom: '8px' }}>
+                        <div>
+                          <p style={{ fontSize: '11px', opacity: 0.7, margin: 0, marginBottom: '2px' }}>available credit</p>
+                          <p style={{ fontSize: '22px', fontWeight: '700', margin: 0 }}>
+                            {card.availableCredit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </p>
+                        </div>
                         <div>
                           <p style={{ fontSize: '11px', opacity: 0.7, margin: 0, marginBottom: '2px' }}>expiry date</p>
                           <p style={{ fontSize: '22px', fontWeight: '700', margin: 0 }}>{card.expiryDate}</p>
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
                     {card.cardType !== 'paypal' && (
                       <p style={{ fontSize: '16px', letterSpacing: '3px', margin: 0, fontFamily: 'monospace' }}>
                         **** **** **** {card.lastFour}
