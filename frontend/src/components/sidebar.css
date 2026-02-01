@@ -1,0 +1,20 @@
+.sidebar-icon {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #888;
+  transition: color 0.2s;
+}
+
+.sidebar-icon:hover {
+  color: #fff;
+}
+
+.sidebar-icon:focus,
+.sidebar-icon:focus-visible {
+  outline: none;
+}
