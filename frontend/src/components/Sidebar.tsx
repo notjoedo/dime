@@ -56,13 +56,6 @@ export default function Sidebar() {
           <MdOutlineSettings size={24} />
         </Link>
       </nav>
-
-      {/* Bottom Info Icon */}
-      <div style={{ marginTop: 'auto'}}>
-        <Link to="/information" className="sidebar-icon">
-          <MdOutlineInfo size={24} />
-        </Link>
-      </div>
     </div>
   )
 }

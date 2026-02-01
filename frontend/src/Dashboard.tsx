@@ -7,7 +7,6 @@ import Spending from './pages/Spending'
 import Analytics from './pages/Analytics'
 import Credit from './pages/Credit'
 import Settings from './pages/Settings'
-import Information from './pages/Information'
 
 function Dashboard() {
   return (
@@ -21,7 +20,6 @@ function Dashboard() {
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/credit" element={<Credit />} />
           <Route path="/settings" element={<Settings />} />
-          <Route path="/information" element={<Information />} />
         </Routes>
       </div>
       <Footer />
