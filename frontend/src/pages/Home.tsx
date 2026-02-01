@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Header from '../components/Header'
 import { MdChevronLeft, MdChevronRight, MdAdd, MdClose } from 'react-icons/md'
 
@@ -108,10 +108,39 @@ export default function Home() {
   const [currentCardIndex, setCurrentCardIndex] = useState(0)
   const [showAddCardModal, setShowAddCardModal] = useState(false)
 
-  // Dynamic data state - can be populated from backend
+  // Dynamic data state - populated from backend
   const [cards, setCards] = useState<CardData[]>(initialCards)
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>(initialRecentTransactions)
   const [earningsTransactions, setEarningsTransactions] = useState<Transaction[]>(initialEarningsTransactions)
+
+  // Fetch cards from API on mount
+  useEffect(() => {
+    const fetchCards = async () => {
+      try {
+        const API_URL = 'http://localhost:5001/api'
+        const res = await fetch(`${API_URL}/cards?user_id=aman`)
+        const data = await res.json()
+        if (data.cards && data.cards.length > 0) {
+          // Transform API data to match CardData interface
+          const apiCards: CardData[] = data.cards.map((card: any) => ({
+            card_id: card.card_id,
+            card_type: card.card_type?.toLowerCase() || 'visa',
+            last_four: card.last_four,
+            expiration: card.expiration,
+            cardholder: card.cardholder || 'Unknown',
+            balance: 0, // API doesn't return balance, default to 0
+            status: 'Active',
+            currency: 'USD',
+          }))
+          setCards(apiCards)
+        }
+      } catch (err) {
+        console.error('Failed to fetch cards:', err)
+        // Keep initial cards on error
+      }
+    }
+    fetchCards()
+  }, [])
 
   // Graph data - can be populated from backend
   const [avgUtilization, setAvgUtilization] = useState(69) // percentage
