@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Header from '../components/Header'
 import { HiSparkles } from 'react-icons/hi2'
 import { MdDelete, MdAdd, MdClose } from 'react-icons/md'
@@ -44,11 +44,11 @@ const portfolioStats = {
 const aiRecommendations = [
   {
     id: 1,
-    text: 'Based on your spending, consider adding',
-    cardSuggestion: 'Chase Ink Business',
-    textAfter: 'for 5x on office supplies and earning and rewards plus total earned card too.',
+    text: 'Use your',
+    cardSuggestion: 'Discover card',
+    textAfter: 'for every DoorDash purchase instead of PayPal to earn 1x rewards.',
     summary:
-      'You spent $1,200 on office supplies last month. The Chase Ink Business Cash card offers 5% cash back on the first $25,000 spent in combined purchases each account anniversary year.',
+      'You\'re currently using PayPal for DoorDash orders which earns 0x rewards. Switch to Discover to earn 1x cash back on every food delivery purchase.',
   },
 ]
 
@@ -64,6 +64,7 @@ export default function Credit() {
   const [creditCards, setCreditCards] = useState<CardData[]>([])
   const [loading, setLoading] = useState(true)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const hasFetched = useRef(false)
 
   // Form State
   const [cardNumber, setCardNumber] = useState("")
@@ -89,7 +90,7 @@ export default function Credit() {
           id: card.card_id,
           category: 'everyday use', // Default category for now
           cardType: (card.card_type || 'visa').toLowerCase(),
-          cardName: card.nickname || `${card.card_type} Card`,
+          cardName: card.cardholder_name || card.nickname || 'Aman Agarwal',
           // Mock financial data (since AP doesn't provide it yet)
           availableCredit: 9281.56,
           expiryDate: card.expiry || '12/28',
@@ -133,6 +134,8 @@ export default function Credit() {
   }
 
   useEffect(() => {
+    if (hasFetched.current) return
+    hasFetched.current = true
     fetchCards()
   }, [])
 
@@ -427,12 +430,6 @@ export default function Credit() {
                     {card.cardType !== 'paypal' && (
                       <div style={{ display: 'flex', gap: '40px', marginBottom: '8px' }}>
                         <div>
-                          <p style={{ fontSize: '11px', opacity: 0.7, margin: 0, marginBottom: '2px' }}>available credit</p>
-                          <p style={{ fontSize: '22px', fontWeight: '700', margin: 0 }}>
-                            {card.availableCredit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                          </p>
-                        </div>
-                        <div>
                           <p style={{ fontSize: '11px', opacity: 0.7, margin: 0, marginBottom: '2px' }}>expiry date</p>
                           <p style={{ fontSize: '22px', fontWeight: '700', margin: 0 }}>{card.expiryDate}</p>
                         </div>
@@ -523,12 +520,6 @@ export default function Credit() {
                     <h4 style={{ fontSize: '24px', fontWeight: '600', margin: '0 0 12px 0' }}>{card.cardName}</h4>
                     {card.cardType !== 'paypal' && (
                       <div style={{ display: 'flex', gap: '40px', marginBottom: '8px' }}>
-                        <div>
-                          <p style={{ fontSize: '11px', opacity: 0.7, margin: 0, marginBottom: '2px' }}>available credit</p>
-                          <p style={{ fontSize: '22px', fontWeight: '700', margin: 0 }}>
-                            {card.availableCredit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                          </p>
-                        </div>
                         <div>
                           <p style={{ fontSize: '11px', opacity: 0.7, margin: 0, marginBottom: '2px' }}>expiry date</p>
                           <p style={{ fontSize: '22px', fontWeight: '700', margin: 0 }}>{card.expiryDate}</p>

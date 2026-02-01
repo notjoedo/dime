@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Header from '../components/Header'
 import { MdChevronLeft, MdChevronRight, MdClose } from 'react-icons/md'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
@@ -92,6 +92,129 @@ const CARD_TYPES = [
   { value: 'other', label: 'Other' },
 ]
 
+const CATEGORY_COLORS: Record<string, string> = {
+  food_dining: '#ef4444',
+  groceries: '#22c55e',
+  gas_auto: '#f97316',
+  shopping: '#a855f7',
+  travel: '#3b82f6',
+  entertainment: '#ec4899',
+  healthcare: '#8b5cf6',
+  services: '#10b981',
+  home: '#f59e0b',
+  other: '#6b7280',
+}
+
+function CategoryBreakdown() {
+  const [categories, setCategories] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const hasFetched = useRef(false)
+
+  useEffect(() => {
+    if (hasFetched.current) return
+    hasFetched.current = true
+    
+    const fetchCategories = async () => {
+      try {
+        const API_URL = 'http://localhost:5001/api'
+        const res = await fetch(`${API_URL}/spending-by-category?user_id=aman&days=365`)
+        const data = await res.json()
+        
+        const cats = (data.categories || [])
+          .filter((c: any) => c.total_spent > 0)
+          .sort((a: any, b: any) => b.total_spent - a.total_spent)
+          .slice(0, 5) // Top 5
+        
+        setCategories(cats)
+        setLoading(false)
+      } catch (err) {
+        console.error('Failed to fetch categories:', err)
+        setLoading(false)
+      }
+    }
+    
+    fetchCategories()
+  }, [])
+
+  if (loading) {
+    return <p style={{ color: '#6b7280', fontSize: '12px' }}>Loading...</p>
+  }
+
+  if (categories.length === 0) {
+    return <p style={{ color: '#6b7280', fontSize: '12px' }}>No spending data</p>
+  }
+
+  const totalSpent = categories.reduce((sum: number, cat: any) => sum + cat.total_spent, 0)
+  
+  // Generate pie chart segments
+  const circumference = 2 * Math.PI * 40
+  const generateSegments = () => {
+    const segments: JSX.Element[] = []
+    let cumulativePercent = 0
+    
+    categories.forEach((cat, index) => {
+      const segmentPercent = (cat.total_spent / totalSpent) * 100
+      const segmentLength = (segmentPercent / 100) * circumference
+      const dashOffset = (cumulativePercent / 100) * circumference
+      
+      segments.push(
+        <circle
+          key={index}
+          cx="50"
+          cy="50"
+          r="40"
+          fill="none"
+          stroke={CATEGORY_COLORS[cat.category] || '#6b7280'}
+          strokeWidth="14"
+          strokeDasharray={`${segmentLength} ${circumference - segmentLength}`}
+          strokeDashoffset={-dashOffset}
+          transform="rotate(-90 50 50)"
+        />
+      )
+      cumulativePercent += segmentPercent
+    })
+    
+    return segments
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* Pie Chart */}
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
+        <svg width="120" height="120" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="40" fill="none" stroke="#252525" strokeWidth="14" />
+          {generateSegments()}
+        </svg>
+      </div>
+      
+      {/* Legend */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        {categories.map((cat: any, idx: number) => {
+          const percent = ((cat.total_spent / totalSpent) * 100).toFixed(0)
+          return (
+            <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                <div style={{
+                  width: '10px',
+                  height: '10px',
+                  borderRadius: '50%',
+                  backgroundColor: CATEGORY_COLORS[cat.category] || '#6b7280',
+                }} />
+                <span style={{ color: '#ccc', fontSize: '13px', textTransform: 'capitalize' }}>
+                  {cat.category.replace('_', ' ')}
+                </span>
+              </div>
+              <span style={{ color: '#888', fontSize: '12px' }}>
+                {percent}%
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export default function Home() {
   const [currentCardIndex, setCurrentCardIndex] = useState(0)
   const [showAddCardModal, setShowAddCardModal] = useState(false)
@@ -101,9 +224,13 @@ export default function Home() {
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>(initialRecentTransactions)
   const [topMerchants, setTopMerchants] = useState<{ name: string, icon: string }[]>([])
   const [syncing, setSyncing] = useState(false)
+  const cardsFetched = useRef(false)
 
   // Fetch cards from API on mount
   useEffect(() => {
+    if (cardsFetched.current) return
+    cardsFetched.current = true
+    
     const fetchCards = async () => {
       // Default PayPal card for DoorDash
       const paypalCard: CardData = {
@@ -111,7 +238,7 @@ export default function Home() {
         card_type: 'paypal',
         last_four: '8812',
         expiration: 'N/A',
-        cardholder: 'PayPal User',
+        cardholder: 'Aman Agarwal',
         balance: 0,
         status: 'Active',
         currency: 'USD',
@@ -128,7 +255,7 @@ export default function Home() {
             card_type: card.card_type?.toLowerCase() || 'visa',
             last_four: card.last_four,
             expiration: card.expiration,
-            cardholder: card.nickname || card.cardholder || 'User',
+            cardholder: card.cardholder || card.nickname || 'Aman Agarwal',
             balance: 0,
             status: 'Active',
             currency: 'USD',
@@ -185,8 +312,7 @@ export default function Home() {
                   return mId === 44 // Amazon only for Visa
                 }
                 if (t === 'paypal') {
-                  // Show ALL DoorDash transactions for PayPal (no filter)
-                  return true
+                  return mId === 19 // DoorDash only for PayPal
                 }
                 return true
               })
@@ -692,45 +818,11 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Avg Utilization - Dynamic */}
-          <div style={{ width: '240px', borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', backgroundColor: '#1E1E1E' }}>
-            <p style={{ color: '#6b7280', fontSize: '22px', marginBottom: '16px', marginTop: 0 }}>avg. utilization</p>
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="160" height="160" viewBox="0 0 160 160">
-                <circle cx="80" cy="80" r="60" fill="none" stroke="#2A2A2A" strokeWidth="14" />
-                <circle
-                  cx="80"
-                  cy="80"
-                  r="60"
-                  fill="none"
-                  stroke="#8B5CF6"
-                  strokeWidth="14"
-                  strokeLinecap="round"
-                  strokeDasharray={`${utilizationDash} ${circumference}`}
-                  transform="rotate(-90 80 80)"
-                />
-              </svg>
-            </div>
-          </div>
-
-          {/* Total Earned - Dynamic */}
-          <div style={{ width: '240px', borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', backgroundColor: '#1E1E1E' }}>
-            <p style={{ color: '#6b7280', fontSize: '22px', marginBottom: '16px', marginTop: 0 }}>by category</p>
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="160" height="160" viewBox="0 0 160 160">
-                <circle cx="80" cy="80" r="60" fill="none" stroke="#2A2A2A" strokeWidth="14" />
-                <circle
-                  cx="80"
-                  cy="80"
-                  r="60"
-                  fill="none"
-                  stroke="#2DD4BF"
-                  strokeWidth="14"
-                  strokeLinecap="round"
-                  strokeDasharray={`${earnedDash} ${circumference}`}
-                  transform="rotate(-90 80 80)"
-                />
-              </svg>
+          {/* Recently Made by Category */}
+          <div style={{ flex: 1, borderRadius: '16px', padding: '20px', backgroundColor: '#1E1E1E' }}>
+            <p style={{ color: '#6b7280', fontSize: '22px', marginBottom: '16px', marginTop: 0 }}>recently made by category</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <CategoryBreakdown />
             </div>
           </div>
         </div>
