@@ -446,7 +446,7 @@ export default function Home() {
 
         <div style={{ display: 'flex', gap: '10px' }}>
           <div style={{ flex: 1, borderRadius: '16px', padding: '20px', backgroundColor: '#1E1E1E' }}>
-            <p style={{ color: '#6b7280', fontSize: '22px', marginBottom: '16px', marginTop: 0 }}>monthly tracker</p>
+            <p style={{ color: '#6b7280', fontSize: '22px', marginBottom: '16px', marginTop: 0 }}>spending & income trend</p>
             <div style={{ width: '100%', height: '192px', borderRadius: '16px', backgroundColor: '#2A2A2A' }} />
           </div>
 
@@ -473,7 +473,7 @@ export default function Home() {
 
           {/* Total Earned - Dynamic */}
           <div style={{ width: '240px', borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', backgroundColor: '#1E1E1E' }}>
-            <p style={{ color: '#6b7280', fontSize: '22px', marginBottom: '16px', marginTop: 0 }}>total earned</p>
+            <p style={{ color: '#6b7280', fontSize: '22px', marginBottom: '16px', marginTop: 0 }}>by category</p>
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="160" height="160" viewBox="0 0 160 160">
                 <circle cx="80" cy="80" r="60" fill="none" stroke="#2A2A2A" strokeWidth="14" />
@@ -595,7 +595,7 @@ export default function Home() {
             </div>
 
             {/* Pagination Dots */}
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '24px', marginTop: '-16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '24px', marginTop: '-24px' }}>
               {cards.map((_, index) => (
                 <div
                   key={index}
@@ -662,10 +662,10 @@ export default function Home() {
                     backgroundColor: '#8B5CF6',
                     border: 'none',
                     borderRadius: '9999px',
-                    color: '#fff',
+                    color: '#000',
                     fontSize: '16px',
                     cursor: 'pointer',
-                    fontWeight: '500',
+                    fontWeight: '1000',
                   }}
                 >
                   make payment

@@ -36,7 +36,7 @@ export default function Header({ title = 'dashboard' }: HeaderProps) {
       {/* Search Bar */}
       <div style={{
         position: 'absolute',
-        left: '65%',
+        left: '72%',
         transform: 'translateX(-50%)',
         width: '200px',
       }}>
