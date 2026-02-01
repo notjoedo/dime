@@ -12,7 +12,7 @@ export default function Header({ title = 'dashboard' }: HeaderProps) {
       top: 0,
       left: '85px',
       right: 0,
-      height: '80px',
+      height: '81px',
       backgroundColor: '#121212',
       display: 'flex',
       alignItems: 'center',
