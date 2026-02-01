@@ -42,6 +42,9 @@ class PhotonAgent {
       const saved = this.store.saveTransaction(txn);
 
       if (saved) {
+        // Send to backend
+        await this.sendToBackend(txn, receipt);
+
         const msg = formatReceiptConfirmation(
           txn.merchant.name,
           txn.transaction.total,
@@ -87,6 +90,112 @@ class PhotonAgent {
     }
 
     return false;
+  }
+
+  private async sendToBackend(txn: any, receipt: any): Promise<void> {
+    try {
+      const knotTransaction = this.convertToKnotFormat(txn, receipt);
+      
+      const response = await fetch(`${config.BACKEND_URL}/api/knot/transactions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: "aman",
+          transactions: [knotTransaction]
+        }),
+      });
+
+      if (response.ok) {
+        console.log("✅ Receipt sent to backend successfully");
+      } else {
+        console.error(`⚠️ Backend error: ${response.status}`);
+      }
+    } catch (err) {
+      console.error("Backend send error:", err);
+    }
+  }
+
+  private convertToKnotFormat(txn: any, receipt: any): any {
+    const merchantCategoryMap: Record<string, number> = {
+      grocery: 43,
+      restaurant: 56,
+      retail: 44,
+      gas: 47,
+      pharmacy: 51,
+      entertainment: 13,
+      travel: 10,
+      utilities: 99,
+      hotel: 10,
+      bar: 56,
+    };
+
+    const category = txn.merchant.category?.toLowerCase() || "other";
+    const merchantId = merchantCategoryMap[category] || 99;
+
+    // Build products array
+    const products = txn.items.map((item: any) => ({
+      name: item.description,
+      quantity: item.quantity,
+      price: {
+        unit_price: String(item.price),
+        total: String(item.price * item.quantity),
+      },
+    }));
+
+    // Build adjustments
+    const adjustments = [];
+    if (txn.transaction.tax && txn.transaction.tax > 0) {
+      adjustments.push({
+        type: "TAX",
+        label: "Tax",
+        amount: String(txn.transaction.tax),
+      });
+    }
+
+    // Parse payment method
+    let paymentType = "CARD";
+    let paymentBrand = "Card";
+    let lastFour = null;
+
+    const pm = txn.transaction.paymentMethod || "";
+    const pmUpper = pm.toUpperCase();
+    if (pmUpper.includes("PAYPAL") || pmUpper.includes("APPLE PAY")) {
+      paymentType = "PAYPAL";
+      paymentBrand = pmUpper.includes("PAYPAL") ? "PayPal" : "Apple Pay";
+    } else if (pm) {
+      const parts = pm.split(/\s+/);
+      if (parts.length > 0) paymentBrand = parts[0];
+      // Extract last 4 digits
+      const digits = pm.match(/\d{4}/);
+      if (digits) lastFour = digits[0];
+    }
+
+    return {
+      id: txn.id,
+      external_id: txn.sourceMessageId,
+      datetime: txn.receivedAt.toISOString(),
+      merchant_id: merchantId,
+      merchant_name: txn.merchant.name,
+      order_status: "COMPLETED",
+      payment_method: paymentType,
+      payment_methods: [
+        {
+          type: paymentType,
+          brand: paymentBrand,
+          last_four: lastFour,
+          transaction_amount: String(txn.transaction.total),
+        },
+      ],
+      price: {
+        currency: "USD",
+        sub_total: String(txn.transaction.subtotal || txn.transaction.total),
+        total: String(txn.transaction.total),
+        adjustments,
+      },
+      products,
+      total_amount: String(txn.transaction.total),
+      confidence_score: txn.confidenceScore,
+    };
   }
 
   async runOnce(): Promise<number> {

@@ -67,12 +67,44 @@ def create_session():
 
 @knot_bp.route("/transactions", methods=["GET", "POST"])
 def sync_transactions():
-    """Sync transactions from Knot API (GET or POST)"""
+    """Sync transactions from Knot API (GET or POST) or accept manual transactions from agent"""
     data = request.json if request.method == "POST" else request.args
     user_id = data.get("user_id") or "aman"
     merchant_id = data.get("merchant_id")
     
+    # Check if this is a manual transaction submission from agent
+    manual_transactions = data.get("transactions") if request.method == "POST" else None
+    
     db = get_snowflake()
+    
+    # Handle manual transaction submission (from agent)
+    if manual_transactions:
+        print(f"📸 Received {len(manual_transactions)} manual transaction(s) from agent")
+        try:
+            for tx in manual_transactions:
+                m_id = tx.get("merchant_id")
+                m_name = tx.get("merchant_name", "Unknown")
+                result = db.save_transactions_batch([tx], user_id, int(m_id), m_name)
+                print(f"💾 Saved manual transaction: {m_name} - ${tx.get('total_amount')}")
+            
+            # Return enriched data
+            limit = int(data.get("limit", 100))
+            enriched_transactions = db.get_transactions(user_id, limit=limit)
+            for tx in enriched_transactions:
+                tx["spend_category"] = tx.get("category")
+            
+            return jsonify({
+                "success": True,
+                "total": len(enriched_transactions),
+                "transactions": enriched_transactions
+            })
+        except Exception as e:
+            print(f"❌ Error saving manual transactions: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+    
+    # Original Knot API sync logic
     merchants = []
     if db:
         merchants = db.get_merchants(user_id)
