@@ -115,8 +115,8 @@ export default function Home() {
 
   // Dynamic data state - populated from backend
   const [cards, setCards] = useState<CardData[]>(initialCards)
-  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>(initialRecentTransactions)
-  const [earningsTransactions, setEarningsTransactions] = useState<Transaction[]>(initialEarningsTransactions)
+  const [recentTransactions] = useState<Transaction[]>(initialRecentTransactions)
+  const [earningsTransactions] = useState<Transaction[]>(initialEarningsTransactions)
 
   // Fetch cards from API on mount
   useEffect(() => {
@@ -148,9 +148,8 @@ export default function Home() {
   }, [])
 
   // Graph data - can be populated from backend
-  const [avgUtilization, setAvgUtilization] = useState(69) // percentage
-  const [totalEarned, setTotalEarned] = useState(77) // percentage
-  const [totalEarnedAmount, setTotalEarnedAmount] = useState(1250.00)
+  const avgUtilization = 69 // percentage (static for now)
+  const totalEarned = 77 // percentage (static for now)
   const [trendData, setTrendData] = useState<TrendData[]>([])
 
   // Fetch spending and income trends
@@ -553,7 +552,7 @@ export default function Home() {
                   <Tooltip
                     contentStyle={{ backgroundColor: '#252525', border: '1px solid #333', borderRadius: '8px' }}
                     labelStyle={{ color: '#fff' }}
-                    formatter={(value: number) => [`$${value.toLocaleString()}`, '']}
+                    formatter={(value: any) => `$${Number(value || 0).toLocaleString()}`}
                   />
                   <Legend wrapperStyle={{ fontSize: '12px' }} />
                   <Line
