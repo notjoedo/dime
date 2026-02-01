@@ -118,6 +118,8 @@ def sync_transactions():
                 "limit": 50
             }
             
+            print(f"🔍 Syncing merchant {m_id} ({m_name}) for user {user_id}...")
+            
             response = requests.post(
                 url,
                 json=payload,
@@ -125,9 +127,13 @@ def sync_transactions():
                 headers={"Content-Type": "application/json"}
             )
             
+            print(f"📡 Knot API response status for merchant {m_id}: {response.status_code}")
+            
             if response.ok:
                 data = response.json()
                 txs = data.get("transactions", [])
+                
+                print(f"✅ Received {len(txs)} transactions from merchant {m_id} ({m_name})")
                 
                 # Enforce flattened info into transaction for frontend
                 for tx in txs:
@@ -145,10 +151,19 @@ def sync_transactions():
                 
                 # Save to Snowflake in background (simplified)
                 if db and txs:
-                    db.save_transactions_batch(txs, user_id, int(m_id), m_name)
+                    try:
+                        result = db.save_transactions_batch(txs, user_id, int(m_id), m_name)
+                        print(f"💾 Saved {result.get('saved')}/{result.get('total')} transactions for merchant {m_id}")
+                    except Exception as save_error:
+                        print(f"⚠️ Failed to save transactions for merchant {m_id}: {save_error}")
+            else:
+                error_data = response.json() if response.headers.get('content-type') == 'application/json' else response.text
+                print(f"❌ Knot API error for merchant {m_id} ({m_name}): {response.status_code} - {error_data}")
                     
         except Exception as e:
-            print(f"Error syncing merchant {m_id}: {e}")
+            print(f"❌ Error syncing merchant {m_id}: {e}")
+            import traceback
+            traceback.print_exc()
 
     # Sort all aggregated transactions by date
     all_transactions.sort(key=lambda x: x.get("datetime", ""), reverse=True)

@@ -61,38 +61,7 @@ interface TrendData {
 }
 
 // Sample data - replace with API calls
-const initialCards: CardData[] = [
-  {
-    card_id: '1',
-    card_type: 'visa',
-    last_four: '1234',
-    expiration: '02/30',
-    cardholder: 'Joe Do',
-    balance: 9281.56,
-    status: 'Active',
-    currency: 'USD',
-  },
-  {
-    card_id: '2',
-    card_type: 'mastercard',
-    last_four: '5678',
-    expiration: '08/27',
-    cardholder: 'Joe Do',
-    balance: 4520.00,
-    status: 'Active',
-    currency: 'USD',
-  },
-  {
-    card_id: '3',
-    card_type: 'amex',
-    last_four: '9012',
-    expiration: '11/26',
-    cardholder: 'Joe Do',
-    balance: 12450.75,
-    status: 'Active',
-    currency: 'USD',
-  },
-]
+const initialCards: CardData[] = []
 
 const initialRecentTransactions: Transaction[] = []
 
@@ -136,23 +105,24 @@ export default function Home() {
   // Fetch cards from API on mount
   useEffect(() => {
     const fetchCards = async () => {
+      // Default PayPal card for DoorDash
+      const paypalCard: CardData = {
+        card_id: 'paypal-static',
+        card_type: 'paypal',
+        last_four: '8812',
+        expiration: 'N/A',
+        cardholder: 'PayPal User',
+        balance: 0,
+        status: 'Active',
+        currency: 'USD',
+      }
+
       try {
         const API_URL = 'http://localhost:5001/api'
         const res = await fetch(`${API_URL}/cards?user_id=aman`)
         const data = await res.json()
 
-        const paypalCard: CardData = {
-          card_id: 'paypal-static',
-          card_type: 'paypal',
-          last_four: '8812',
-          expiration: 'N/A',
-          cardholder: 'PayPal User',
-          balance: 0,
-          status: 'Active',
-          currency: 'USD',
-        }
-
-        if (data.cards) {
+        if (data.cards && data.cards.length > 0) {
           const apiCards: CardData[] = data.cards.map((card: any) => ({
             card_id: card.card_id,
             card_type: card.card_type?.toLowerCase() || 'visa',
@@ -164,18 +134,24 @@ export default function Home() {
             currency: 'USD',
           }))
 
-          // Ensure PayPal is always there, matched with API cards
-          const combined = [...apiCards]
-          if (!combined.find(c => c.card_type === 'paypal')) {
-            combined.push(paypalCard)
+          // Only add PayPal if not already in API cards (check both card_type and card_id)
+          const hasPayPal = apiCards.some(c => 
+            c.card_type === 'paypal' || c.card_id === 'paypal-static'
+          )
+          
+          if (!hasPayPal) {
+            setCards([...apiCards, paypalCard])
+          } else {
+            setCards(apiCards)
           }
-          setCards(combined)
         } else {
+          // No cards from API, show just PayPal
           setCards([paypalCard])
         }
       } catch (err) {
         console.error('Failed to fetch cards:', err)
-        // Keep initial cards on error
+        // On error, show PayPal as fallback
+        setCards([paypalCard])
       }
     }
     fetchCards()
@@ -187,39 +163,30 @@ export default function Home() {
       const currentCard = cards[currentCardIndex]
       const type = (currentCard.card_type || 'visa').toLowerCase()
 
-      // Fetch Direct Transactions from Knot & Sync with Snowflake
+      // Fetch Transactions ONLY from Snowflake (already synced by background)
       const fetchTransactions = async () => {
         try {
           const API_URL = 'http://localhost:5001/api'
 
-          // 1. Trigger or Fetch Direct from Knot (Fastest way to see real data)
-          const knotRes = await fetch(`${API_URL}/knot/transactions?user_id=aman`)
-          const knotData = await knotRes.json()
-
-          // 2. Fetch from Snowflake (For enriched data like points/categories later)
-          const snowRes = await fetch(`${API_URL}/snowflake/transactions?user_id=aman&card_id=${currentCard.card_id}&card_type=${type}`)
+          // Fetch from Snowflake only - much faster, data already synced
+          const snowRes = await fetch(`${API_URL}/snowflake/transactions?user_id=aman&card_id=${currentCard.card_id}&card_type=${type}&limit=20`)
           const snowData = await snowRes.json()
 
-          // Prefer Knot data for immediate real-time accuracy, falling back to Snowflake
-          let rawTransactions = []
-          if (knotData.transactions && knotData.transactions.length > 0) {
-            rawTransactions = knotData.transactions
-          } else if (snowData.transactions && snowData.transactions.length > 0) {
-            rawTransactions = snowData.transactions
-          }
+          const rawTransactions = snowData.transactions || []
 
           if (rawTransactions.length > 0) {
             const mapped = rawTransactions
               .filter((tx: any) => {
-                // HARDCODED DEMO LOGIC
+                // Filter by card type - show relevant transactions
                 const t = type.toLowerCase()
                 const mId = Number(tx.merchant_id || tx.merchant?.id)
 
                 if (t === 'visa') {
-                  return mId === 44 // Amazon
+                  return mId === 44 // Amazon only for Visa
                 }
                 if (t === 'paypal') {
-                  return mId === 19 // DoorDash
+                  // Show ALL DoorDash transactions for PayPal (no filter)
+                  return true
                 }
                 return true
               })

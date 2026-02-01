@@ -117,11 +117,11 @@ export default function Transactions() {
         // Initial fetch
         fetchTransactions(false);
 
-        // Auto-refresh every 30 seconds
+        // Auto-refresh every 60 seconds
         const interval = setInterval(() => {
             console.log("Auto-syncing transactions...");
             fetchTransactions(false);
-        }, 30000);
+        }, 60000);
 
         return () => clearInterval(interval);
     }, [fetchTransactions]);
@@ -276,7 +276,7 @@ export default function Transactions() {
                     <div style={{ fontSize: "48px", marginBottom: "16px" }}>📭</div>
                     <div style={{ fontSize: "16px", fontWeight: "500" }}>No transactions yet</div>
                     <div style={{ fontSize: "13px", marginTop: "8px" }}>
-                        Enter User ID and Merchant ID, then click "Sync Transactions"
+                        Transactions sync automatically every 60 seconds
                     </div>
                 </div>
             ) : (

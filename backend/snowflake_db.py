@@ -431,18 +431,27 @@ class SnowflakeDB:
     def save_transactions_batch(self, transactions: List[Dict], user_id: str, merchant_id: int, merchant_name: str) -> Dict[str, Any]:
         """Save multiple transactions with a single commit"""
         saved = 0
-        conn, _ = self._get_connection()
-        for tx in transactions:
-            try:
-                self.save_transaction(tx, user_id, merchant_id, merchant_name, commit=False)
-                saved += 1
-            except Exception as e:
-                print(f"Error saving transaction {tx.get('id')}: {e}")
+        conn, cursor = self._get_connection()
         
         try:
+            for tx in transactions:
+                try:
+                    self.save_transaction(tx, user_id, merchant_id, merchant_name, commit=False)
+                    saved += 1
+                except Exception as e:
+                    print(f"Error saving transaction {tx.get('id')}: {e}")
+                    # Continue with other transactions instead of failing completely
+                    continue
+            
+            # Commit all changes at once
             conn.commit()
         except Exception as e:
             print(f"Error committing batch: {e}")
+            # Rollback to release locks
+            try:
+                conn.rollback()
+            except:
+                pass
             raise e
             
         return {"success": True, "saved": saved, "total": len(transactions)}
@@ -480,9 +489,7 @@ class SnowflakeDB:
                 query += " AND card_id IS NULL AND (UPPER(payment_method) = %s OR UPPER(payment_method) LIKE %s)"
                 params.append(target_type)
                 params.append(f"%{target_type}%")
-        else:
-            # Fallback for no filters
-            query += " AND card_id IS NULL"
+        # No else clause - when no filters specified, show ALL transactions
             
         query += " ORDER BY datetime DESC LIMIT %s"
         params.append(limit)
