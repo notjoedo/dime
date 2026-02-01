@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 import Header from '../components/Header'
-import Footer from '../components/Footer'
-import { MdSearch, MdTrendingUp, MdLightbulb, MdWarning, MdEdit, MdFileDownload, MdKeyboardArrowDown } from 'react-icons/md'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { MdSearch, MdTrendingUp, MdEdit, MdKeyboardArrowDown } from 'react-icons/md'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, Cell } from 'recharts'
 
 // Import stat card icons
 import PointsIcon from '../public/Points_Icon.svg'
@@ -24,16 +23,33 @@ interface CategoryData {
   percentage: number
 }
 
-interface InsightCard {
-  type: 'positive' | 'opportunity' | 'alert'
-  title: string
-  description: string
-}
-
 interface TrendData {
   month: string
   spending: number
   income: number
+}
+
+interface CardPerformanceData {
+  name: string
+  amount: number
+  transactions: number
+  color: string
+}
+
+interface MonthlyPatternData {
+  month: string
+  count: number
+}
+
+interface TransactionData {
+  id: string
+  merchant_name: string
+  merchant_id: number
+  payment_method: string
+  total_amount: number
+  points_earned: number
+  spend_category: string
+  datetime: string
 }
 
 // Sample data
@@ -60,24 +76,6 @@ const utilizationCategories = [
   { name: 'etc', color: '#3b82f6' },
 ]
 
-const insightsData: InsightCard[] = [
-  {
-    type: 'positive',
-    title: 'positive trend',
-    description: 'Your savings rate increased by 5.2% this month compared to last month.',
-  },
-  {
-    type: 'opportunity',
-    title: 'optimization opportunity',
-    description: 'Switch 40% of your dining spend to Amex gold for an estimated 680 extra points/month.',
-  },
-  {
-    type: 'alert',
-    title: 'budget alert',
-    description: "You're 15% over budget on shopping this month. Consider reducing by $150.",
-  },
-]
-
 // Icon component for stat cards - uses imported SVG files
 const StatIcon = ({ type }: { type: 'star' | 'calendar' | 'clock' }) => {
   const icons = {
@@ -98,22 +96,13 @@ const StatIcon = ({ type }: { type: 'star' | 'calendar' | 'clock' }) => {
   )
 }
 
-// Insight icon component
-const InsightIcon = ({ type }: { type: 'positive' | 'opportunity' | 'alert' }) => {
-  if (type === 'positive') {
-    return <MdTrendingUp size={24} color="#22c55e" />
-  }
-  if (type === 'opportunity') {
-    return <MdLightbulb size={24} color="#a855f7" />
-  }
-  return <MdWarning size={24} color="#ef4444" />
-}
-
 export default function Analytics() {
   const [searchQuery, setSearchQuery] = useState('')
   const [cardFilter, setCardFilter] = useState('all cards')
   const [timeFilter, setTimeFilter] = useState('all time')
   const [trendData, setTrendData] = useState<TrendData[]>([])
+  const [cardPerformanceData, setCardPerformanceData] = useState<CardPerformanceData[]>([])
+  const [monthlyPatternData, setMonthlyPatternData] = useState<MonthlyPatternData[]>([])
 
   // Fetch spending and income trends on mount
   useEffect(() => {
@@ -175,6 +164,88 @@ export default function Analytics() {
       }
     }
     fetchTrends()
+  }, [])
+
+  // Fetch transactions for card performance and monthly pattern
+  useEffect(() => {
+    const fetchTransactions = async () => {
+      const API_URL = 'http://localhost:5001/api'
+      try {
+        const response = await fetch(`${API_URL}/transactions?user_id=aman&limit=200`)
+        const data = await response.json()
+        const transactions: TransactionData[] = data.transactions || []
+
+        // Process card performance data - filter out Unknown
+        const cardMap: Record<string, { amount: number; transactions: number }> = {}
+        transactions.forEach((tx) => {
+          const paymentMethod = tx.payment_method
+          // Skip transactions with no payment method or Unknown
+          if (!paymentMethod || paymentMethod === 'Unknown') return
+
+          if (!cardMap[paymentMethod]) {
+            cardMap[paymentMethod] = { amount: 0, transactions: 0 }
+          }
+          cardMap[paymentMethod].amount += Math.abs(tx.total_amount || 0)
+          cardMap[paymentMethod].transactions += 1
+        })
+
+        // Colors for different payment methods
+        const colors = ['#a855f7', '#ec4899', '#f97316', '#22c55e', '#3b82f6', '#10b981', '#8b5cf6']
+        const cardPerformance = Object.entries(cardMap)
+          .map(([name, data], index) => ({
+            name: name === 'PAYPAL' ? 'PayPal' : name,
+            amount: Math.round(data.amount * 100) / 100,
+            transactions: data.transactions,
+            color: colors[index % colors.length]
+          }))
+          .sort((a, b) => b.amount - a.amount)
+          .slice(0, 5) // Top 5 payment methods
+
+        setCardPerformanceData(cardPerformance)
+
+        // Process monthly purchase pattern (count of transactions per month)
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        const monthMap: Record<string, number> = {}
+        monthNames.forEach(month => { monthMap[month] = 0 })
+
+        transactions.forEach((tx) => {
+          if (tx.datetime) {
+            const date = new Date(tx.datetime)
+            const monthName = monthNames[date.getMonth()]
+            monthMap[monthName] += 1
+          }
+        })
+
+        // Only include months that have transactions
+        const monthlyPattern = monthNames
+          .map(month => ({
+            month,
+            count: monthMap[month]
+          }))
+          .filter(item => item.count > 0)
+
+        setMonthlyPatternData(monthlyPattern)
+
+      } catch (err) {
+        console.error('Failed to fetch transactions:', err)
+        // Set sample data on error
+        setCardPerformanceData([
+          { name: 'Visa', amount: 1850, transactions: 24, color: '#a855f7' },
+          { name: 'Mastercard', amount: 1200, transactions: 18, color: '#ec4899' },
+          { name: 'PayPal', amount: 650, transactions: 12, color: '#f97316' },
+          { name: 'Amex', amount: 450, transactions: 8, color: '#22c55e' },
+        ])
+        setMonthlyPatternData([
+          { month: 'Aug', count: 12 },
+          { month: 'Sep', count: 18 },
+          { month: 'Oct', count: 15 },
+          { month: 'Nov', count: 22 },
+          { month: 'Dec', count: 28 },
+          { month: 'Jan', count: 14 },
+        ])
+      }
+    }
+    fetchTransactions()
   }, [])
 
   // Calculate circumference for donut charts
@@ -434,7 +505,7 @@ export default function Analytics() {
                   <Tooltip
                     contentStyle={{ backgroundColor: '#252525', border: '1px solid #333', borderRadius: '8px' }}
                     labelStyle={{ color: '#fff' }}
-                    formatter={(value: number) => [`$${value.toLocaleString()}`, '']}
+                    formatter={(value) => [`$${(value as number || 0).toLocaleString()}`, '']}
                   />
                   <Legend wrapperStyle={{ fontSize: '12px' }} />
                   <Line
@@ -582,15 +653,31 @@ export default function Analytics() {
             }}>
               card performance
             </p>
-            <div style={{
-              width: '100%',
-              height: '180px',
-              backgroundColor: '#252525',
-              borderRadius: '12px',
-            }} />
+            <div style={{ width: '100%', height: '180px' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={cardPerformanceData} layout="vertical" margin={{ top: 5, right: 30, left: 60, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#333" horizontal={false} />
+                  <XAxis type="number" stroke="#666" fontSize={11} tickFormatter={(value) => `$${value}`} />
+                  <YAxis type="category" dataKey="name" stroke="#666" fontSize={11} width={55} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#252525', border: '1px solid #333', borderRadius: '8px' }}
+                    labelStyle={{ color: '#fff', fontFamily: 'Coolvetica' }}
+                    formatter={(value, name) => [
+                      `$${((value as number) || 0).toLocaleString()}`,
+                      name === 'amount' ? 'Spent' : name
+                    ]}
+                  />
+                  <Bar dataKey="amount" radius={[0, 4, 4, 0]}>
+                    {cardPerformanceData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
 
-          {/* Daily Spending Pattern */}
+          {/* Monthly Spending Pattern */}
           <div style={{
             flex: 1.5,
             backgroundColor: '#1a1a1a',
@@ -605,67 +692,26 @@ export default function Analytics() {
               marginBottom: '16px',
               fontFamily: 'Coolvetica, sans-serif',
             }}>
-              daily spending pattern
+              monthly purchase pattern
             </p>
-            <div style={{
-              width: '100%',
-              height: '180px',
-              backgroundColor: '#252525',
-              borderRadius: '12px',
-            }} />
+            <div style={{ width: '100%', height: '180px' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={monthlyPatternData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
+                  <XAxis dataKey="month" stroke="#666" fontSize={11} />
+                  <YAxis stroke="#666" fontSize={11} allowDecimals={false} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#252525', border: '1px solid #333', borderRadius: '8px' }}
+                    labelStyle={{ color: '#fff', fontFamily: 'Coolvetica' }}
+                    formatter={(value) => [`${((value as number) || 0)} purchases`, '']}
+                  />
+                  <Bar dataKey="count" fill="#2DD4BF" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </div>
 
-        {/* Insights Section */}
-        <div style={{
-          display: 'flex',
-          gap: '16px',
-        }}>
-          {insightsData.map((insight, index) => (
-            <div
-              key={index}
-              style={{
-                flex: 1,
-                backgroundColor: insight.type === 'positive'
-                  ? 'rgba(34, 197, 94, 0.08)'
-                  : insight.type === 'opportunity'
-                    ? 'rgba(168, 85, 247, 0.08)'
-                    : 'rgba(239, 68, 68, 0.08)',
-                borderRadius: '16px',
-                padding: '20px',
-                border: `1px solid ${insight.type === 'positive'
-                  ? 'rgba(34, 197, 94, 0.2)'
-                  : insight.type === 'opportunity'
-                    ? 'rgba(168, 85, 247, 0.2)'
-                    : 'rgba(239, 68, 68, 0.2)'
-                  }`,
-              }}
-            >
-              <div style={{ marginBottom: '12px' }}>
-                <InsightIcon type={insight.type} />
-              </div>
-              <h3 style={{
-                fontFamily: 'Coolvetica, sans-serif',
-                fontSize: '16px',
-                fontWeight: '600',
-                color: '#fff',
-                margin: 0,
-                marginBottom: '8px',
-              }}>
-                {insight.title}
-              </h3>
-              <p style={{
-                fontFamily: 'Coolvetica, sans-serif',
-                fontSize: '13px',
-                color: '#888',
-                margin: 0,
-                lineHeight: '1.5',
-              }}>
-                {insight.description}
-              </p>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   )
