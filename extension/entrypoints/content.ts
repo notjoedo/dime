@@ -1,9 +1,19 @@
 import { detectMerchant, detectMerchantSite, type MerchantConfig } from '../utils/merchants';
-import { getRecommendationForMerchant } from '../utils/mockData';
-import type { CardRecommendation, ExtensionMessage } from '../types';
+import logoSvg from '../assets/LOGO-02.svg';
+import chipSvg from '../assets/CHIP.svg';
 
-// Demo mode - set to false when backend is ready
-const DEMO_MODE = false;
+// Backend API URL
+const API_BASE_URL = 'http://localhost:5001';
+const USER_ID = 'aman';
+
+interface BackendCard {
+  card_id: string;
+  card_type: string;
+  last_four: string;
+  benefits?: string;
+  cardholder?: string;
+  expiry_date?: string;
+}
 
 export default defineContentScript({
   matches: [
@@ -37,10 +47,9 @@ export default defineContentScript({
     '*://*.bk.com/*',
   ],
   main() {
-    console.log('Card Optimizer content script loaded');
+    console.log('Dime content script loaded');
 
     let overlayInjected = false;
-    let currentMerchant: MerchantConfig | null = null;
 
     // Check initial URL
     checkForCheckout(window.location.href);
@@ -50,15 +59,10 @@ export default defineContentScript({
     let throttleTimeout: ReturnType<typeof setTimeout> | null = null;
 
     function throttledCheckForCheckout() {
-      // Only check if URL actually changed
       const currentUrl = window.location.href;
       if (currentUrl === lastUrl) return;
-
       lastUrl = currentUrl;
-
-      // Throttle to max once per 500ms
       if (throttleTimeout) return;
-
       throttleTimeout = setTimeout(() => {
         throttleTimeout = null;
         checkForCheckout(currentUrl);
@@ -75,224 +79,263 @@ export default defineContentScript({
       subtree: true,
     });
 
-    // Also listen for popstate events
     window.addEventListener('popstate', () => {
       checkForCheckout(window.location.href);
     });
 
     function checkForCheckout(url: string) {
-      // First check if it's a checkout page
       const checkoutMerchant = detectMerchant(url);
-
       if (checkoutMerchant && !overlayInjected) {
-        currentMerchant = checkoutMerchant;
-        fetchAndShowRecommendation(checkoutMerchant, true);
+        fetchAndShowRecommendation(checkoutMerchant);
       } else if (!checkoutMerchant && overlayInjected) {
         removeOverlay();
       }
     }
 
-    async function fetchAndShowRecommendation(merchant: MerchantConfig, isCheckout: boolean) {
-      // Use demo data if in demo mode
-      if (DEMO_MODE) {
-        console.log('Card Optimizer: Demo mode - showing recommendation for', merchant.name);
-        const recommendation = getRecommendationForMerchant(merchant.id);
-        if (recommendation && recommendation.potential_savings > 0) {
-          injectOverlay(recommendation, merchant, isCheckout);
-        }
-        return;
-      }
-
+    async function fetchAndShowRecommendation(merchant: MerchantConfig) {
       try {
-        const message: ExtensionMessage = {
-          type: 'GET_BEST_CARD',
-          payload: { merchantId: merchant.id, category: merchant.category },
-        };
+        const response = await fetch(`${API_BASE_URL}/api/cards?user_id=${USER_ID}`);
+        const data = await response.json();
+        const cards: BackendCard[] = data.cards || [];
 
-        const response = await browser.runtime.sendMessage(message);
-
-        if ('error' in response) {
-          console.error('Error getting recommendation:', response.error);
+        if (cards.length === 0) {
+          console.log('Dime: No cards found');
           return;
         }
 
-        const recommendation = response as CardRecommendation;
+        const bestCard = findBestCardForCategory(cards, merchant.category);
 
-        // Only show overlay if there's a better card available
-        if (recommendation.best_card && recommendation.potential_savings > 0) {
-          injectOverlay(recommendation, merchant, isCheckout);
+        if (bestCard) {
+          injectOverlay(bestCard, merchant);
         }
       } catch (error) {
-        console.error('Failed to fetch recommendation:', error);
+        console.error('Dime: Failed to fetch cards:', error);
       }
     }
 
-    function injectOverlay(recommendation: CardRecommendation, merchant: MerchantConfig, isCheckout: boolean) {
+    function getCashbackRate(benefits: string | undefined, category: string): number {
+      if (!benefits) return 1.0;
+      const categoryMatch = benefits.toLowerCase().includes(category.toLowerCase());
+      const percentMatch = benefits.match(/(\d+(?:\.\d+)?)\s*%/);
+      if (categoryMatch && percentMatch) return parseFloat(percentMatch[1]);
+      if (percentMatch) return parseFloat(percentMatch[1]);
+      return 1.5;
+    }
+
+    function findBestCardForCategory(cards: BackendCard[], category: string): BackendCard | null {
+      if (cards.length === 0) return null;
+      let bestCard = cards[0];
+      let bestRate = getCashbackRate(cards[0].benefits, category);
+      for (const card of cards) {
+        const rate = getCashbackRate(card.benefits, category);
+        if (rate > bestRate) {
+          bestRate = rate;
+          bestCard = card;
+        }
+      }
+      return bestCard;
+    }
+
+    function mapCardType(type: string): 'visa' | 'mastercard' | 'discover' | 'american_express' {
+      const normalized = type?.toLowerCase() || '';
+      if (normalized.includes('visa')) return 'visa';
+      if (normalized.includes('mastercard') || normalized.includes('master')) return 'mastercard';
+      if (normalized.includes('discover')) return 'discover';
+      if (normalized.includes('amex') || normalized.includes('american')) return 'american_express';
+      return 'visa';
+    }
+
+    function injectOverlay(bestCard: BackendCard, merchant: MerchantConfig) {
       if (overlayInjected) return;
 
-      const overlay = createOverlayElement(recommendation, merchant, isCheckout);
+      const overlay = createOverlayElement(bestCard, merchant);
       document.body.appendChild(overlay);
       overlayInjected = true;
 
-      // Animate in
       requestAnimationFrame(() => {
         overlay.style.opacity = '1';
         overlay.style.transform = 'translateY(0)';
       });
     }
 
-    function createOverlayElement(
-      recommendation: CardRecommendation,
-      merchant: MerchantConfig,
-      isCheckout: boolean
-    ): HTMLElement {
+    function createOverlayElement(bestCard: BackendCard, merchant: MerchantConfig): HTMLElement {
       const overlay = document.createElement('div');
-      overlay.id = 'card-optimizer-overlay';
+      overlay.id = 'dime-overlay';
+
+      const cashbackRate = getCashbackRate(bestCard.benefits, merchant.category);
+      const cardType = mapCardType(bestCard.card_type);
+      const lastFour = bestCard.last_four || '0000';
+      const cardHolderName = bestCard.cardholder || USER_ID;
+      const expiryDate = bestCard.expiry_date || '12/28';
+
+      // Format card number display
+      const maskedPart = '* * * *   * * * *   * * * *';
+      const lastFourSpaced = lastFour.split('').join(' ');
+      const displayNumber = `${maskedPart}   ${lastFourSpaced}`;
+
+      // Card type badge HTML
+      let cardTypeBadge = '';
+      if (cardType === 'visa') {
+        cardTypeBadge = `<span style="font-size: 20px; font-weight: bold; font-style: italic; color: #1a1f71;">VISA</span>`;
+      } else if (cardType === 'mastercard') {
+        cardTypeBadge = `<div style="display: flex; align-items: center;">
+          <div style="width: 28px; height: 28px; background: #eb001b; border-radius: 50%;"></div>
+          <div style="width: 28px; height: 28px; background: #f79e1b; border-radius: 50%; margin-left: -10px; opacity: 0.9;"></div>
+        </div>`;
+      } else if (cardType === 'american_express') {
+        cardTypeBadge = `<span style="font-size: 18px; font-weight: bold; color: #006fcf;">AMEX</span>`;
+      } else if (cardType === 'discover') {
+        cardTypeBadge = `<span style="font-size: 18px; font-weight: bold; color: #ff6000;">DISCOVER</span>`;
+      }
+
+      // Main overlay container - matches popup exactly
       overlay.style.cssText = `
         position: fixed;
         top: 20px;
         right: 20px;
-        width: 320px;
-        background: white;
-        border-radius: 12px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        width: 500px;
+        background: #121212;
+        border-radius: 16px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
         z-index: 999999;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         opacity: 0;
         transform: translateY(-10px);
         transition: opacity 0.3s ease, transform 0.3s ease;
+        overflow: hidden;
       `;
 
-      const currentCardText = recommendation.current_card
-        ? `${recommendation.current_card.name} (${recommendation.current_card.reward_rate}%)`
-        : 'No card on file';
-
-      const headerText = isCheckout
-        ? 'A better card is available!'
-        : `Tip for ${merchant.name}`;
-
-      const actionButtonHtml = isCheckout
-        ? `<button id="card-optimizer-switch" style="
-            width: 100%;
-            padding: 12px;
-            background: #1976d2;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background 0.2s ease;
-          ">
-            Switch Now
-          </button>`
-        : `<div style="font-size: 12px; color: #666; text-align: center; padding: 8px;">
-            Use <strong>${recommendation.best_card.name}</strong> at checkout for best rewards
-          </div>`;
-
       overlay.innerHTML = `
-        <div style="padding: 16px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <span style="font-size: 14px; font-weight: 600; color: #1a1a1a;">
-              ${headerText}
-            </span>
-            <button id="card-optimizer-close" style="
+        <!-- Header - matches popup header -->
+        <header style="
+          background: #121212;
+          padding: 24px 40px 16px 40px;
+          border-bottom: 1px solid #454545;
+        ">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <!-- Logo -->
+            <img src="${logoSvg}" alt="Dime" style="height: 56px; filter: invert(1);" />
+            
+            <!-- Close Button -->
+            <button id="dime-close" style="
               background: none;
               border: none;
-              font-size: 20px;
+              font-size: 28px;
               cursor: pointer;
               color: #666;
-              padding: 0;
+              padding: 0 0 0 16px;
               line-height: 1;
             ">&times;</button>
           </div>
+        </header>
 
-          <div style="background: #f5f5f5; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-            <div style="font-size: 12px; color: #666; margin-bottom: 4px;">Current card on file</div>
-            <div style="font-size: 14px; color: #333;">${currentCardText}</div>
-          </div>
-
-          <div style="background: #e8f5e9; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
-            <div style="font-size: 12px; color: #2e7d32; margin-bottom: 4px;">Better option</div>
-            <div style="font-size: 16px; font-weight: 600; color: #1b5e20;">
-              ${recommendation.best_card.name}
+        <!-- Content - matches popup layout -->
+        <div style="padding: 40px;">
+          <!-- Section Header -->
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
+            <div style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                <rect x="2" y="5" width="20" height="14" rx="2" />
+                <line x1="2" y1="10" x2="22" y2="10" />
+              </svg>
             </div>
-            <div style="font-size: 14px; color: #388e3c; margin-top: 4px;">
-              ${recommendation.explanation}
+            <span style="color: white; font-size: 22px; font-weight: bold;">There's a better card available for ${merchant.name}!</span>
+          </div>
+
+          <!-- Card and Info Row -->
+          <div style="display: flex; align-items: stretch; justify-content: space-between; gap: 32px;">
+            <!-- Left side - Card (matches popup card component exactly) -->
+            <div style="width: 280px; flex-shrink: 0; position: relative;">
+              <!-- Ideal card pill -->
+              <div style="
+                position: absolute;
+                top: -16px;
+                right: 4px;
+                z-index: 10;
+                background: white;
+                border: 2px solid #BB86FC;
+                border-radius: 9999px;
+                padding: 4px 20px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+              ">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#BB86FC">
+                  <path d="M12 0L14.59 8.41L23 11L14.59 13.59L12 22L9.41 13.59L1 11L9.41 8.41L12 0Z" />
+                  <path d="M19 2L19.94 4.06L22 5L19.94 5.94L19 8L18.06 5.94L16 5L18.06 4.06L19 2Z" />
+                  <path d="M5 16L5.63 17.37L7 18L5.63 18.63L5 20L4.37 18.63L3 18L4.37 17.37L5 16Z" />
+                </svg>
+                <span style="color: #BB86FC; font-size: 14px; font-weight: 500;">ideal card!</span>
+              </div>
+              
+
+              
+              <!-- Card -->
+              <div style="
+                position: relative;
+                width: 100%;
+                aspect-ratio: 1.7 / 1;
+                background: white;
+                border-radius: 16px;
+                padding: 20px;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                overflow: hidden;
+              ">
+                <!-- Top row: Chip and Card Type -->
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                  <!-- Chip -->
+                  <img src="${chipSvg}" alt="Chip" style="width: 40px; height: 32px; flex-shrink: 0;" />
+                  
+                  <!-- Card Type Logo -->
+                  <div style="width: 80px; height: 28px; display: flex; align-items: center; justify-content: flex-end; flex-shrink: 0;">
+                    ${cardTypeBadge}
+                  </div>
+                </div>
+
+                <!-- Card Number -->
+                <div style="font-size: 13px; letter-spacing: 1.5px; color: #A09D9D; white-space: nowrap;">
+                  ${displayNumber}
+                </div>
+
+                <!-- Bottom row: Name and Expiry -->
+                <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+                  <div>
+                    <div style="font-size: 10px; color: #A09D9D; margin-bottom: 2px;">Card Holder Name</div>
+                    <div style="font-size: 14px; color: #A09D9D; font-weight: 500;">${cardHolderName}</div>
+                  </div>
+                  <div style="text-align: right;">
+                    <div style="font-size: 10px; color: #A09D9D; margin-bottom: 2px;">Expiry Date</div>
+                    <div style="font-size: 14px; color: #A09D9D; font-weight: 500;">${expiryDate}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right side - Cashback info (matches popup) -->
+            <div style="display: flex; flex-direction: column; justify-content: flex-end; flex: 1;">
+              <div style="color: white; font-size: 32px; font-weight: bold;">${cashbackRate}%</div>
+              <div style="color: white; font-size: 20px;">cashback</div>
+              <div style="color: #9ca3af; font-size: 14px; margin-top: 8px;">${bestCard.benefits || 'General rewards card'}</div>
+
             </div>
           </div>
 
-          ${actionButtonHtml}
-
-          <div style="font-size: 11px; color: #999; text-align: center; margin-top: 8px;">
-            Shopping at ${merchant.name}
-          </div>
+          <!-- Divider -->
+          <div style="height: 1px; background: #454545; margin-top: 24px;"></div>
         </div>
       `;
 
       // Event listeners
-      const closeBtn = overlay.querySelector('#card-optimizer-close');
+      const closeBtn = overlay.querySelector('#dime-close');
       closeBtn?.addEventListener('click', () => removeOverlay());
-
-      if (isCheckout) {
-        const switchBtn = overlay.querySelector('#card-optimizer-switch');
-        switchBtn?.addEventListener('click', () => handleSwitchCard(recommendation, merchant));
-
-        // Hover effect for switch button
-        switchBtn?.addEventListener('mouseenter', () => {
-          (switchBtn as HTMLElement).style.background = '#1565c0';
-        });
-        switchBtn?.addEventListener('mouseleave', () => {
-          (switchBtn as HTMLElement).style.background = '#1976d2';
-        });
-      }
 
       return overlay;
     }
 
-    async function handleSwitchCard(recommendation: CardRecommendation, merchant: MerchantConfig) {
-      const switchBtn = document.querySelector('#card-optimizer-switch') as HTMLButtonElement;
-      if (switchBtn) {
-        switchBtn.textContent = 'Switching...';
-        switchBtn.disabled = true;
-      }
-
-      try {
-        const message: ExtensionMessage = {
-          type: 'SWITCH_CARD',
-          payload: {
-            merchantId: merchant.id,
-            currentCardId: recommendation.current_card?.id || '',
-            switchToCardId: recommendation.best_card.id,
-          },
-        };
-
-        const response = await browser.runtime.sendMessage(message);
-
-        if ('error' in response || !response.success) {
-          throw new Error(response.error || response.message || 'Switch failed');
-        }
-
-        // Success state
-        if (switchBtn) {
-          switchBtn.textContent = 'Switched!';
-          switchBtn.style.background = '#2e7d32';
-        }
-
-        // Remove overlay after delay
-        setTimeout(() => removeOverlay(), 2000);
-      } catch (error) {
-        console.error('Failed to switch card:', error);
-        if (switchBtn) {
-          switchBtn.textContent = 'Failed - Try Again';
-          switchBtn.disabled = false;
-          switchBtn.style.background = '#d32f2f';
-        }
-      }
-    }
-
     function removeOverlay() {
-      const overlay = document.getElementById('card-optimizer-overlay');
+      const overlay = document.getElementById('dime-overlay');
       if (overlay) {
         overlay.style.opacity = '0';
         overlay.style.transform = 'translateY(-10px)';
@@ -303,12 +346,12 @@ export default defineContentScript({
       }
     }
 
-    // Listen for messages from popup to show recommendation on any supported page
+    // Listen for messages from popup
     browser.runtime.onMessage.addListener((message: { type: string; merchantId?: string }) => {
       if (message.type === 'SHOW_RECOMMENDATION') {
         const merchant = detectMerchantSite(window.location.href);
         if (merchant && !overlayInjected) {
-          fetchAndShowRecommendation(merchant, false);
+          fetchAndShowRecommendation(merchant);
         }
       }
     });
