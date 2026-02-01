@@ -403,16 +403,6 @@ export default function Credit() {
                   </div>
                 </div>
 
-                {/* Action Buttons */}
-                <div style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
-                  <button style={{ flex: 1, padding: '12px', backgroundColor: '#8B5CF6', border: 'none', borderRadius: '9999px', color: '#000', fontSize: '15px', fontWeight: '600', cursor: 'pointer' }}>
-                    make payment
-                  </button>
-                  <button style={{ padding: '12px 20px', backgroundColor: '#3a3a3a', border: 'none', borderRadius: '9999px', color: '#fff', fontSize: '15px', cursor: 'pointer' }}>
-                    details
-                  </button>
-                </div>
-
                 {/* Card Divider */}
                 <div style={{ height: '1px', backgroundColor: '#333', marginTop: '16px' }} />
               </div>
@@ -547,16 +537,6 @@ export default function Credit() {
                     <p style={{ color: '#6b7280', fontSize: '13px', margin: 0 }}>minimum</p>
                     <p style={{ color: '#fff', fontSize: '16px', fontWeight: '600', margin: 0 }}>${card.minimumPayment}</p>
                   </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
-                  <button style={{ flex: 1, padding: '12px', backgroundColor: '#8B5CF6', border: 'none', borderRadius: '9999px', color: '#000', fontSize: '15px', fontWeight: '600', cursor: 'pointer' }}>
-                    make payment
-                  </button>
-                  <button style={{ padding: '12px 20px', backgroundColor: '#3a3a3a', border: 'none', borderRadius: '9999px', color: '#fff', fontSize: '15px', cursor: 'pointer' }}>
-                    details
-                  </button>
                 </div>
 
                 {/* Card Divider */}
