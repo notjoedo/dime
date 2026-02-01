@@ -81,7 +81,7 @@ export default defineConfig({
       'https://*.bk.com/*',
 
       // Backend API
-      'http://localhost:8000/*',
+      'http://localhost:5001/*',
     ],
   },
 });
