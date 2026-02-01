@@ -16,7 +16,7 @@ const JPEG_QUALITY = 80;
 
 export class ReceiptProcessor {
   private ai: GoogleGenAI;
-  private model = "gemini-3-flash-preview";
+  private model = "gemini-2.5-flash";
 
   constructor(apiKey?: string) {
     this.ai = new GoogleGenAI({ apiKey: apiKey || config.GEMINI_API_KEY });
@@ -110,7 +110,10 @@ export class ReceiptProcessor {
       const base64Data = compressed.data.toString("base64");
       const response = await this.ai.models.generateContent({
         model: this.model,
-        contents: [{ role: "user", parts: [{ text: RECEIPT_PROMPT }, { inlineData: { mimeType: compressed.mimeType, data: base64Data } }] }],
+        contents: [
+          { inlineData: { mimeType: compressed.mimeType, data: base64Data } },
+          { text: RECEIPT_PROMPT },
+        ],
       });
 
       if (!response.text) return null;
@@ -120,9 +123,13 @@ export class ReceiptProcessor {
       console.log(`Parsed: ${receipt.merchant.name} - $${receipt.transaction.total.toFixed(2)}${paymentInfo}`);
       return receipt;
     } catch (err: any) {
-      if (err?.status === 429 && retryCount < 3) {
+      // Log full error details for debugging
+      console.error("Full error:", JSON.stringify(err, Object.getOwnPropertyNames(err), 2));
+
+      const status = err?.status || err?.response?.status || err?.code;
+      if ((status === 429 || err?.message?.includes("429") || err?.message?.includes("rate")) && retryCount < 3) {
         const delay = Math.min(5 * Math.pow(2, retryCount), 30); // 5s, 10s, 20s
-        console.log(`Rate limited. Retry ${retryCount + 1}/3 in ${delay}s...`);
+        console.log(`Rate limited (status: ${status}). Retry ${retryCount + 1}/3 in ${delay}s...`);
         await new Promise((r) => setTimeout(r, delay * 1000));
         return this.processReceipt(imageData, _useFallback, mimeType, retryCount + 1);
       }
