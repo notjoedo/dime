@@ -58,7 +58,7 @@ export default function Sidebar() {
       </nav>
 
       {/* Bottom Info Icon */}
-      <div style={{ marginTop: 'auto', paddingBottom: '10px' }}>
+      <div style={{ marginTop: 'auto'}}>
         <Link to="/information" className="sidebar-icon">
           <MdOutlineInfo size={24} />
         </Link>
