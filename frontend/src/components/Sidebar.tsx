@@ -1,6 +1,7 @@
 import { MdOutlineHome, MdOutlineCreditCard, MdOutlineBarChart, MdOutlineDescription, MdOutlineSettings, MdOutlineInfo } from 'react-icons/md'
 import './sidebar.css'
 import dimeLogo from '../public/dime-gradient.svg'
+import { Link } from 'react-router-dom'
 
 export default function Sidebar() {
   return (
@@ -39,28 +40,28 @@ export default function Sidebar() {
         gap: '8px',
         flex: 1,
       }}>
-        <button className="sidebar-icon">
+        <Link to="/home" className="sidebar-icon">
           <MdOutlineHome size={24} />
-        </button>
-        <button className="sidebar-icon">
+        </Link>
+        <Link to="/spending" className="sidebar-icon">
           <MdOutlineCreditCard size={24} />
-        </button>
-        <button className="sidebar-icon">
+        </Link>
+        <Link to="/analytics" className="sidebar-icon">
           <MdOutlineBarChart size={24} />
-        </button>
-        <button className="sidebar-icon">
+        </Link>
+        <Link to="/credit" className="sidebar-icon">
           <MdOutlineDescription size={24} />
-        </button>
-        <button className="sidebar-icon">
+        </Link>
+        <Link to="/settings" className="sidebar-icon">
           <MdOutlineSettings size={24} />
-        </button>
+        </Link>
       </nav>
 
       {/* Bottom Info Icon */}
       <div style={{ marginTop: 'auto', paddingBottom: '40px' }}>
-        <button className="sidebar-icon">
+        <Link to="/information" className="sidebar-icon">
           <MdOutlineInfo size={24} />
-        </button>
+        </Link>
       </div>
     </div>
   )

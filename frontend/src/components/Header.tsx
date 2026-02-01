@@ -35,9 +35,10 @@ export default function Header({ title = 'dashboard' }: HeaderProps) {
 
       {/* Search Bar */}
       <div style={{
-        position: 'relative',
+        position: 'absolute',
+        left: '65%',
+        transform: 'translateX(-50%)',
         width: '200px',
-        marginLeft: '500px',
       }}>
         <MdSearch 
           size={22} 
