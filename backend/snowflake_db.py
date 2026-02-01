@@ -702,12 +702,12 @@ Return JSON only, no explanation:"""
         return {}
     
     def calculate_points(self, tx_id: str, card_id: str = None) -> Dict[str, Any]:
-        """Calculate points earned for a transaction based on card benefits"""
+        """Calculate points earned for a transaction based on card benefits and payment method rules"""
         conn, cursor = self._get_connection()
         
-        # Get transaction details
+        # Get transaction details including merchant info
         cursor.execute("""
-            SELECT id, spend_category, total_amount, payment_method, card_id
+            SELECT id, spend_category, total_amount, payment_method, card_id, merchant_name, merchant_id
             FROM TRANSACTIONS WHERE id = %s
         """, (tx_id,))
         
@@ -715,22 +715,55 @@ Return JSON only, no explanation:"""
         if not tx:
             return {"error": "Transaction not found"}
         
-        tx_id, spend_category, amount, payment_method, tx_card_id = tx
+        tx_id, spend_category, amount, payment_method, tx_card_id, merchant_name, merchant_id = tx
+        
+        # Payment method rules:
+        # PayPal = 0x
+        # Discover = 1x flat on all
+        # Visa = 2x on Amazon (merchant_id 44)
+        
+        points = 0
+        multiplier = 0
+        reason = "default"
+        
+        if not payment_method:
+            payment_method = ""
+        
+        pm_upper = payment_method.upper()
         
         # PayPal = 0 points
-        if payment_method and 'PAYPAL' in payment_method.upper():
-            cursor.execute("UPDATE TRANSACTIONS SET points_earned = 0 WHERE id = %s", (tx_id,))
-            conn.commit()
-            return {"id": tx_id, "points_earned": 0, "reason": "PayPal payment"}
+        if 'PAYPAL' in pm_upper:
+            points = 0
+            multiplier = 0
+            reason = "PayPal (0x)"
         
-        # Get card benefits
-        use_card_id = card_id or tx_card_id
-        if not use_card_id:
-            # Default 1x points
+        # Discover = 1x flat
+        elif 'DISCOVER' in pm_upper:
             points = int(amount) if amount else 0
-            cursor.execute("UPDATE TRANSACTIONS SET points_earned = %s WHERE id = %s", (points, tx_id))
-            conn.commit()
-            return {"id": tx_id, "points_earned": points, "multiplier": 1}
+            multiplier = 1
+            reason = "Discover (1x flat)"
+        
+        # Visa = 2x on Amazon (merchant_id 44), 1x elsewhere
+        elif 'VISA' in pm_upper:
+            if merchant_id == 44 or (merchant_name and 'amazon' in merchant_name.lower()):
+                points = int(amount * 2) if amount else 0
+                multiplier = 2
+                reason = "Visa on Amazon (2x)"
+            else:
+                points = int(amount) if amount else 0
+                multiplier = 1
+                reason = "Visa (1x)"
+        
+        # Default for other payment methods
+        else:
+            points = int(amount) if amount else 0
+            multiplier = 1
+            reason = f"{payment_method or 'Card'} (1x default)"
+        
+        cursor.execute("UPDATE TRANSACTIONS SET points_earned = %s WHERE id = %s", (points, tx_id))
+        conn.commit()
+        
+        return {"id": tx_id, "points_earned": points, "multiplier": multiplier, "reason": reason}
         
         cursor.execute("SELECT benefits FROM CARDS WHERE card_id = %s", (use_card_id,))
         card = cursor.fetchone()
@@ -813,30 +846,31 @@ Return JSON only, no explanation:"""
         return {"success": True, "updated": updated}
     
     def recalculate_all_points(self, user_id: str = None) -> Dict[str, Any]:
-        """Recalculate points for all transactions (respecting PayPal = 0)"""
+        """Recalculate points for all transactions using payment method rules"""
         conn, cursor = self._get_connection()
         
-        # First, set PayPal transactions to 0 points
-        cursor.execute("""
-            UPDATE TRANSACTIONS
-            SET points_earned = 0
-            WHERE payment_method = 'PAYPAL'
-        """)
-        paypal_zeroed = cursor.rowcount
+        # Get all transactions
+        if user_id:
+            cursor.execute("SELECT id FROM TRANSACTIONS WHERE user_id = %s", (user_id,))
+        else:
+            cursor.execute("SELECT id FROM TRANSACTIONS")
         
-        # For non-PayPal, use 1x base (simplified - full version would parse benefits)
-        cursor.execute("""
-            UPDATE TRANSACTIONS
-            SET points_earned = FLOOR(total_amount)
-            WHERE payment_method != 'PAYPAL' OR payment_method IS NULL
-        """)
-        calculated = cursor.rowcount
+        tx_ids = [row[0] for row in cursor.fetchall()]
+        
+        recalculated = 0
+        for tx_id in tx_ids:
+            try:
+                result = self.calculate_points(tx_id)
+                if result.get("points_earned") is not None:
+                    recalculated += 1
+            except Exception as e:
+                print(f"Error recalculating points for {tx_id}: {e}")
         
         conn.commit()
         return {
             "success": True,
-            "paypal_zeroed": paypal_zeroed,
-            "points_calculated": calculated
+            "total_transactions": len(tx_ids),
+            "points_calculated": recalculated
         }
     
     # ========== Cashflow Analytics ==========
