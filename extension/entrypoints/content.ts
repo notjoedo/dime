@@ -218,7 +218,7 @@ export default defineContentScript({
                 <line x1="2" y1="10" x2="22" y2="10" />
               </svg>
             </div>
-            <span style="color: white; font-size: 22px; font-weight: bold;">There's a better card available for ${merchant.name}!</span>
+            <span style="color: white; font-size: 22px; font-weight: bold;">there's a better card available for ${merchant.name.toLowerCase()}!</span>
           </div>
 
           <!-- Card and Info Row -->
@@ -298,11 +298,7 @@ export default defineContentScript({
               <div style="color: white; font-size: 20px;">cashback</div>
               <div style="color: #9ca3af; font-size: 14px; margin-top: 8px;">${bestCard.benefits || 'General rewards card'}</div>
 
-            </div>
           </div>
-
-          <!-- Divider -->
-          <div style="height: 1px; background: #454545; margin-top: 24px;"></div>
         </div>
       `;
 
